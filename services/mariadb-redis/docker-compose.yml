@@ -70,6 +70,8 @@ services:
       MEMORY_LIMIT: ${PHPMYADMIN_MEMORY_LIMIT:-128M}
       MAX_EXECUTION_TIME: 600
 
+    ports:
+      - "${PHPMYADMIN_BIND_IP:-127.0.0.1}:80"
     networks:
       - mariadb
     depends_on:
