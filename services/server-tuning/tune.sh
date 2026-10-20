@@ -195,6 +195,35 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+validate_ssh_authorized_keys() {
+    local key_file="$1"
+    [[ -f "$key_file" && -s "$key_file" ]] || return 1
+    if command_exists ssh-keygen; then
+        ssh-keygen -l -f "$key_file" >/dev/null 2>&1 && return 0
+    fi
+    grep -v '^[[:space:]]*#' "$key_file" 2>/dev/null | grep -Eq '^[[:space:]]*(ssh-(rsa|ed25519|dss)|ecdsa-sha2-nistp|sk-)'
+}
+
+validate_ssh_key_string() {
+    local key_str="$1"
+    [[ -n "$key_str" ]] || return 1
+    local tmp_file
+    tmp_file="$(mktemp 2>/dev/null || echo "/tmp/ssh_key_check_$$")"
+    echo "$key_str" > "$tmp_file"
+    local res=1
+    if command_exists ssh-keygen; then
+        if ssh-keygen -l -f "$tmp_file" >/dev/null 2>&1; then
+            res=0
+        fi
+    else
+        if echo "$key_str" | grep -Eq '^[[:space:]]*(ssh-(rsa|ed25519|dss)|ecdsa-sha2-nistp|sk-)'; then
+            res=0
+        fi
+    fi
+    rm -f "$tmp_file"
+    return "$res"
+}
+
 ask_yes_no() {
     local prompt="$1"
     local default="${2:-Y}"
@@ -250,6 +279,7 @@ SKIP_SSH=false
 CLI_SSH_PORT=""
 CLI_SWAP_SIZE=""
 CLI_ADMIN_USER=""
+CLI_SSH_KEY=""
 
 for arg in "$@"; do
     case "$arg" in
@@ -264,6 +294,7 @@ for arg in "$@"; do
             echo "  --non-interactive   Apply configuration without interactive prompts"
             echo "  --dry-run           Inspect system and validate configuration without modifying system"
             echo "  --ssh-port=PORT     Override SSH port (default: 22)"
+            echo "  --ssh-key=KEY       Authorize SSH public key (enables key-only SSH access)"
             echo "  --swap-size=GB      Override swap size in GB (default: auto based on RAM)"
             echo "  --admin-user=USER   Configure dedicated non-root admin user"
             echo "  --skip-packages     Skip apt upgrade and package installation"
@@ -298,6 +329,9 @@ for arg in "$@"; do
             ;;
         --ssh-port=*)
             CLI_SSH_PORT="${arg#*=}"
+            ;;
+        --ssh-key=*)
+            CLI_SSH_KEY="${arg#*=}"
             ;;
         --swap-size=*)
             CLI_SWAP_SIZE="${arg#*=}"
@@ -338,6 +372,7 @@ fi
 ENV_HOSTNAME=""
 ENV_TIMEZONE=""
 ENV_SSH_PORT=""
+ENV_SSH_KEY=""
 ENV_ADMIN_USER=""
 ENV_ENABLE_SWAP=""
 ENV_SWAP_SIZE_GB=""
@@ -360,6 +395,7 @@ if [[ -n "$SCRIPT_DIR" && -f "${SCRIPT_DIR}/.env" ]]; then
             HOSTNAME)                   ENV_HOSTNAME="$val" ;;
             TIMEZONE)                   ENV_TIMEZONE="$val" ;;
             SSH_PORT)                   ENV_SSH_PORT="$val" ;;
+            SSH_KEY)                    ENV_SSH_KEY="$val" ;;
             ADMIN_USER)                 ENV_ADMIN_USER="$val" ;;
             ENABLE_SWAP)                ENV_ENABLE_SWAP="$val" ;;
             SWAP_SIZE_GB)               ENV_SWAP_SIZE_GB="$val" ;;
@@ -376,6 +412,7 @@ HOSTNAME_INPUT="${ENV_HOSTNAME:-$(hostname)}"
 TIMEZONE_INPUT="${ENV_TIMEZONE:-UTC}"
 SSH_PORT_INPUT="${CLI_SSH_PORT:-${ENV_SSH_PORT:-22}}"
 ADMIN_USER_INPUT="${CLI_ADMIN_USER:-${ENV_ADMIN_USER:-}}"
+SSH_KEY_INPUT="${CLI_SSH_KEY:-${ENV_SSH_KEY:-}}"
 ENABLE_SWAP="${ENV_ENABLE_SWAP:-true}"
 SWAP_SIZE_GB="${CLI_SWAP_SIZE:-${ENV_SWAP_SIZE_GB:-}}"
 ENABLE_BBR="${ENV_ENABLE_BBR:-true}"
@@ -1115,20 +1152,131 @@ configure_admin_user() {
 
     usermod -aG sudo "$ADMIN_USER_INPUT"
 
-    if [[ -f /root/.ssh/authorized_keys ]]; then
-        mkdir -p "/home/${ADMIN_USER_INPUT}/.ssh"
-        cp /root/.ssh/authorized_keys "/home/${ADMIN_USER_INPUT}/.ssh/authorized_keys"
-        chown -R "${ADMIN_USER_INPUT}:${ADMIN_USER_INPUT}" "/home/${ADMIN_USER_INPUT}/.ssh"
-        chmod 700 "/home/${ADMIN_USER_INPUT}/.ssh"
-        chmod 600 "/home/${ADMIN_USER_INPUT}/.ssh/authorized_keys"
-        success "SSH key copied to ${ADMIN_USER_INPUT}."
-    else
-        warn "No /root/.ssh/authorized_keys found."
+    local admin_home
+    admin_home="$(eval echo "~${ADMIN_USER_INPUT}")"
+    local admin_ssh_dir="${admin_home}/.ssh"
+    local admin_keys_file="${admin_ssh_dir}/authorized_keys"
+
+    mkdir -p "$admin_ssh_dir"
+
+    # 1. Install explicit SSH key if provided
+    if [[ -n "${SSH_KEY_INPUT:-}" ]]; then
+        if validate_ssh_key_string "$SSH_KEY_INPUT"; then
+            echo "$SSH_KEY_INPUT" >> "$admin_keys_file"
+            success "Provided SSH key authorized for ${ADMIN_USER_INPUT}."
+        else
+            warn "Provided --ssh-key is not a valid SSH public key. Skipping."
+        fi
     fi
+
+    # 2. Copy from /root/.ssh/authorized_keys if valid
+    if validate_ssh_authorized_keys /root/.ssh/authorized_keys; then
+        cat /root/.ssh/authorized_keys >> "$admin_keys_file"
+        success "SSH key(s) copied from /root/.ssh/authorized_keys to ${ADMIN_USER_INPUT}."
+    fi
+
+    # 3. Check other /home/*/.ssh/authorized_keys (e.g. cloud-init ubuntu/debian)
+    if ! validate_ssh_authorized_keys "$admin_keys_file"; then
+        for other_keys in /home/*/.ssh/authorized_keys; do
+            [[ "$other_keys" == "$admin_keys_file" ]] && continue
+            if validate_ssh_authorized_keys "$other_keys"; then
+                log "Importing valid SSH key from ${other_keys} to ${ADMIN_USER_INPUT}..."
+                cat "$other_keys" >> "$admin_keys_file"
+                break
+            fi
+        done
+    fi
+
+    if [[ -f "$admin_keys_file" ]]; then
+        sort -u "$admin_keys_file" -o "$admin_keys_file"
+    fi
+
+    chown -R "${ADMIN_USER_INPUT}:${ADMIN_USER_INPUT}" "$admin_ssh_dir"
+    chmod 700 "$admin_ssh_dir"
+    [[ -f "$admin_keys_file" ]] && chmod 600 "$admin_keys_file"
 }
 
 configure_ssh() {
     section "SSH hardening"
+
+    local target_user="${ADMIN_USER_INPUT:-root}"
+    local target_keys
+    if [[ -n "$ADMIN_USER_INPUT" ]]; then
+        local admin_home
+        admin_home="$(eval echo "~${ADMIN_USER_INPUT}")"
+        target_keys="${admin_home}/.ssh/authorized_keys"
+    else
+        target_keys="/root/.ssh/authorized_keys"
+    fi
+
+    # 1. If explicit SSH key provided and target keys not yet verified, write it
+    if ! validate_ssh_authorized_keys "$target_keys" && [[ -n "${SSH_KEY_INPUT:-}" ]]; then
+        if validate_ssh_key_string "$SSH_KEY_INPUT"; then
+            mkdir -p "$(dirname "$target_keys")"
+            echo "$SSH_KEY_INPUT" >> "$target_keys"
+            chmod 700 "$(dirname "$target_keys")"
+            chmod 600 "$target_keys"
+            if [[ -n "$ADMIN_USER_INPUT" ]]; then
+                chown -R "${ADMIN_USER_INPUT}:${ADMIN_USER_INPUT}" "$(dirname "$target_keys")"
+            fi
+            success "Provided SSH key authorized for ${target_user}."
+        else
+            warn "Provided --ssh-key is not a valid SSH public key. Skipping."
+        fi
+    fi
+
+    # 2. If target has no keys, try importing from /root or /home/*
+    if ! validate_ssh_authorized_keys "$target_keys"; then
+        if [[ "$target_user" != "root" ]] && validate_ssh_authorized_keys "/root/.ssh/authorized_keys"; then
+            mkdir -p "$(dirname "$target_keys")"
+            cat /root/.ssh/authorized_keys >> "$target_keys"
+            [[ -n "$ADMIN_USER_INPUT" ]] && chown -R "${ADMIN_USER_INPUT}:${ADMIN_USER_INPUT}" "$(dirname "$target_keys")"
+            chmod 700 "$(dirname "$target_keys")"
+            chmod 600 "$target_keys"
+            success "SSH key(s) imported from /root/.ssh/authorized_keys to ${target_user}."
+        else
+            for other_keys in /home/*/.ssh/authorized_keys; do
+                [[ "$other_keys" == "$target_keys" ]] && continue
+                if validate_ssh_authorized_keys "$other_keys"; then
+                    log "Importing valid SSH key from ${other_keys} to ${target_keys}..."
+                    mkdir -p "$(dirname "$target_keys")"
+                    cat "$other_keys" >> "$target_keys"
+                    [[ -n "$ADMIN_USER_INPUT" ]] && chown -R "${ADMIN_USER_INPUT}:${ADMIN_USER_INPUT}" "$(dirname "$target_keys")"
+                    chmod 700 "$(dirname "$target_keys")"
+                    chmod 600 "$target_keys"
+                    break
+                fi
+            done
+        fi
+    fi
+
+    # 3. If still no keys and interactive, prompt user to paste SSH public key
+    if ! validate_ssh_authorized_keys "$target_keys"; then
+        if [[ "$NON_INTERACTIVE" != "true" && -e /dev/tty && -r /dev/tty ]]; then
+            warn "No authorized SSH keys detected on this server for ${target_user}."
+            echo -e "${YELLOW}To disable password authentication safely and prevent lockout, an SSH public key is required.${NC}"
+            if ask_yes_no "Do you want to paste your SSH public key now?" "Y"; then
+                read -r -p "Paste SSH public key: " pasted_key </dev/tty
+                pasted_key="$(echo "$pasted_key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | tr -d '\r')"
+                if validate_ssh_key_string "$pasted_key"; then
+                    mkdir -p "$(dirname "$target_keys")"
+                    echo "$pasted_key" >> "$target_keys"
+                    [[ -n "$ADMIN_USER_INPUT" ]] && chown -R "${ADMIN_USER_INPUT}:${ADMIN_USER_INPUT}" "$(dirname "$target_keys")"
+                    chmod 700 "$(dirname "$target_keys")"
+                    chmod 600 "$target_keys"
+                    if [[ -n "$ADMIN_USER_INPUT" ]]; then
+                        mkdir -p /root/.ssh
+                        echo "$pasted_key" >> /root/.ssh/authorized_keys
+                        chmod 700 /root/.ssh
+                        chmod 600 /root/.ssh/authorized_keys
+                    fi
+                    success "SSH public key registered and verified."
+                else
+                    warn "Invalid SSH public key format."
+                fi
+            fi
+        fi
+    fi
 
     local config="/etc/ssh/sshd_config.d/99-openship-worker.conf"
     mkdir -p "$(dirname "$config")"
@@ -1145,21 +1293,41 @@ configure_ssh() {
         echo "AllowAgentForwarding no"
     } > "$config"
 
-    if [[ -n "$ADMIN_USER_INPUT" && -f "/home/${ADMIN_USER_INPUT}/.ssh/authorized_keys" ]]; then
+    local password_auth_disabled=false
+    if validate_ssh_authorized_keys "$target_keys"; then
         cat >> "$config" <<'EOF'
 PasswordAuthentication no
 PermitRootLogin prohibit-password
 EOF
-        success "SSH password authentication disabled."
+        # Disable PasswordAuthentication in cloud-init sshd drop-in if present
+        if [[ -f /etc/ssh/sshd_config.d/50-cloud-init.conf ]]; then
+            sed -i 's/^[#[:space:]]*PasswordAuthentication[[:space:]].*/PasswordAuthentication no/' /etc/ssh/sshd_config.d/50-cloud-init.conf 2>/dev/null || true
+        fi
+        password_auth_disabled=true
     else
-        warn "Password authentication remains enabled to prevent lockout."
+        warn "Password authentication remains enabled to prevent lockout (no valid SSH key found for ${target_user})."
+        warn "To disable passwords, add your public key to ${target_keys} and rerun."
     fi
 
+    # Verify sshd syntax before reloading
     if sshd -t 2>/dev/null; then
         systemctl reload ssh 2>/dev/null || systemctl restart ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
+        if [[ "$password_auth_disabled" == "true" ]]; then
+            local key_count
+            key_count="$(ssh-keygen -l -f "$target_keys" 2>/dev/null | wc -l | tr -d ' ' || echo "1")"
+            success "SSH key verification passed (${key_count} active key(s) in ${target_keys}):"
+            if command_exists ssh-keygen; then
+                ssh-keygen -l -f "$target_keys" 2>/dev/null | while read -r line; do
+                    log "  [key] ${line}"
+                done
+            fi
+            success "SSH password authentication disabled (key-only access enabled)."
+        fi
         success "SSH configuration validated on port ${SSH_PORT_INPUT}."
     else
-        warn "sshd -t test returned warning; config preserved."
+        warn "sshd -t test returned warning or syntax error; reverting configuration to prevent lockout."
+        rm -f "$config"
+        systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
     fi
 }
 

@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     command:
       - --default-storage-engine=InnoDB
-      - --innodb-buffer-pool-size=192M
+      - --innodb-buffer-pool-size=256M
       - --innodb-buffer-pool-instances=1
       - --innodb-flush-log-at-trx-commit=2
       - --innodb-flush-method=O_DIRECT
