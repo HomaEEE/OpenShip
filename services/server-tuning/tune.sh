@@ -874,7 +874,7 @@ net.ipv4.tcp_slow_start_after_idle = 0
 # Fast TCP reuse & timeout for high-concurrency reverse proxy
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_fin_timeout = 15
-net.ipv4.ip_local_port_range = 1024 65535
+net.ipv4.ip_local_port_range = 32768 65535
 
 # Keepalive timeouts
 net.ipv4.tcp_keepalive_time = 300
