@@ -39,13 +39,16 @@ services:
     image: redis:7.4-alpine
     container_name: redis
     restart: unless-stopped
-    command:
-      - redis-server
-      - --maxmemory
-      - 48mb
-      - --maxmemory-policy
-      - allkeys-lru
-
+    command: >
+      sh -c '
+        if [ -n "$${REDIS_PASSWORD}" ]; then
+          exec redis-server --requirepass "$${REDIS_PASSWORD}" --maxmemory 48mb --maxmemory-policy allkeys-lru
+        else
+          exec redis-server --maxmemory 48mb --maxmemory-policy allkeys-lru
+        fi
+      '
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     volumes:
       - redis_data:/data
     networks:
@@ -54,7 +57,7 @@ services:
     cpus: "0.25"
 
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping; else redis-cli ping; fi"]
       interval: 30s
       timeout: 3s
       retries: 5

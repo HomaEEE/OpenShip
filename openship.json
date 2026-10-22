@@ -5,11 +5,11 @@
   "volumes": ["mariadb_data", "redis_data"],
   "env": {
     "MARIADB_ROOT_PASSWORD": {
-      "value": "mariadb_root_password",
+      "value": "",
       "secret": true
     },
     "REDIS_PASSWORD": {
-      "value": "redis_password",
+      "value": "",
       "secret": true
     },
     "ENABLE_PHPMYADMIN": {

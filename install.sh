@@ -128,6 +128,7 @@ show_help() {
     echo "  --admin-email=EMAIL          OpenShip dashboard administrator email"
     echo "  --admin-password=SECRET      OpenShip dashboard administrator password"
     echo "  --domain=DOMAIN              Domain for OpenShip (alias: --host)"
+    echo "  --public-url=URL             Full public URL (e.g. https://os.example.com)"
     echo "  --proxy-mode=MODE            Reverse proxy mode: caddy, edge, or none"
     echo "  --ssl-mode=MODE              Caddy SSL: auto, cloudflare_flexible, cloudflare_origin, http_ip"
     echo "  --origin-cert-path=PATH      Path to Cloudflare Origin CA certificate file"
@@ -233,6 +234,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --domain|--host)
             OPENSHIP_HOST="$2"
+            shift 2
+            ;;
+        --public-url=*)
+            OPENSHIP_PUBLIC_URL="${1#*=}"
+            shift
+            ;;
+        --public-url)
+            OPENSHIP_PUBLIC_URL="$2"
             shift 2
             ;;
         --proxy-mode=*)
@@ -2022,6 +2031,9 @@ collect_bare_openship_credentials() {
                     OPENSHIP_DOMAIN_KIND="none"
                     OPENSHIP_EDGE_ENABLED="false"
                     OPENSHIP_PROXY_MODE="none"
+                    OPENSHIP_PUBLIC_URL=""
+                    warn "Local mode: OpenShip runs without a public HTTPS domain."
+                    warn "GitHub App creation requires HTTPS; raw IP/local will fail with: 'redirect_url must be a valid URL'."
                     break
                     ;;
                 3)
@@ -2094,6 +2106,7 @@ collect_bare_openship_credentials() {
                         OPENSHIP_PUBLIC_URL="http://${SERVER_IP:-localhost}"
                         CADDY_SSL_MODE="http_ip"
                         success "Caddy mode: direct IP HTTP on port :80 (${OPENSHIP_PUBLIC_URL})."
+                        warn "Notice: GitHub App creation requires an HTTPS domain. Raw HTTP/IP will fail with: 'redirect_url must be a valid URL'."
                     fi
                     break
                     ;;
