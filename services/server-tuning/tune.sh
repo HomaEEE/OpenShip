@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# OpenShip Worker VPS — All-in-One Setup & Tuning Script
+# Linux Server VPS — All-in-One Setup & High-Performance Tuning Script
 # ==============================================================================
 #
 # Standalone, self-contained provisioning and optimization script for Ubuntu
-# 24.04 / 22.04 LTS servers hosting OpenShip Edge, FrankenPHP, and containers.
+# 24.04 / 22.04 LTS servers hosting any stack (PHP, Node.js, Python, Databases, Docker).
 #
 # Everything is included in this single file — zero external library dependencies.
 # Safe to execute directly via curl:
@@ -24,6 +24,7 @@
 #  10. CPU Scaling Governor set to 'performance' (persistent via systemd)
 #  11. UFW Firewall: SSH, HTTP :80, HTTPS :443 tcp+udp (HTTP/3 QUIC); DBs kept private
 #  12. SSH hardening, Fail2ban jail & automatic security updates
+#  13. Interactive application stack choice (Native LEMP, Docker, Web only, or Skip)
 #
 # Usage:
 #   sudo ./tune.sh [OPTIONS]
@@ -34,6 +35,10 @@
 #   --ssh-port=PORT         Override SSH port (default: 22)
 #   --swap-size=GB          Override swap size in GB (default: auto based on RAM)
 #   --admin-user=USER       Configure dedicated non-root admin user
+#   --purge-apache          Automatically stop and purge Apache web server if detected
+#   --stack=CHOICE          Stack to install: native (LEMP), docker (Docker+Compose), web, none
+#   --install-stack         Alias for --stack=native (Nginx, MariaDB, Redis, PHP-FPM, site-cli)
+#   --skip-stack            Alias for --stack=none (Skip stack installation prompt)
 #   --skip-packages         Skip apt upgrade and package installation
 #   --skip-swap             Skip swapfile creation
 #   --skip-sysctl           Skip kernel and sysctl tuning
@@ -48,7 +53,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 readonly SCRIPT_VERSION="1.2.0"
-readonly LOG_FILE="/var/log/openship-worker-tuning.log"
+readonly LOG_FILE="/var/log/server-tuning.log"
 
 # Minimum RAM thresholds (Worker role)
 readonly MIN_RAM_MB=512
@@ -276,9 +281,15 @@ SKIP_SYSCTL=false
 SKIP_UFW=false
 SKIP_SSH=false
 PURGE_APACHE=false
-INSTALL_STACK=false
-SKIP_STACK=false
-STACK_INSTALLED=false
+CLI_STACK_CHOICE=""
+INSTALLED_COMPONENTS=()
+
+CLI_WITH_NGINX=""
+CLI_WITH_MARIADB=""
+CLI_WITH_REDIS=""
+CLI_WITH_PHP=""
+CLI_WITH_DOCKER=""
+CLI_WITH_SITE_CLI=""
 
 CLI_SSH_PORT=""
 CLI_SWAP_SIZE=""
@@ -288,7 +299,7 @@ CLI_SSH_KEY=""
 for arg in "$@"; do
     case "$arg" in
         --version|-v)
-            echo "OpenShip Worker Tuning Script v${SCRIPT_VERSION}"
+            echo "Server Setup & Tuning Script v${SCRIPT_VERSION}"
             exit 0
             ;;
         --help|-h)
@@ -302,8 +313,15 @@ for arg in "$@"; do
             echo "  --swap-size=GB      Override swap size in GB (default: auto based on RAM)"
             echo "  --admin-user=USER   Configure dedicated non-root admin user"
             echo "  --purge-apache      Automatically stop and purge Apache web server if detected"
-            echo "  --install-stack     Install Nginx (with Brotli & performance modules), MariaDB, and Redis"
-            echo "  --skip-stack        Skip the post-tuning Web/DB stack installation prompt"
+            echo "  --stack=CHOICE      Stack mode: lemp/native (full), custom, docker, none"
+            echo "  --install-stack     Alias for --stack=lemp (Nginx, MariaDB, Redis, PHP-FPM, site-cli)"
+            echo "  --skip-stack        Alias for --stack=none (Skip stack installation prompt)"
+            echo "  --with-nginx / --without-nginx       Install / skip Nginx (with Brotli & buffers)"
+            echo "  --with-mariadb / --without-mariadb   Install / skip MariaDB 11"
+            echo "  --with-redis / --without-redis       Install / skip Redis server"
+            echo "  --with-php / --without-php           Install / skip PHP-FPM & extensions"
+            echo "  --with-docker / --without-docker     Install / skip Docker Engine & Compose v2"
+            echo "  --with-site-cli / --without-site-cli Install / skip site-cli management tool"
             echo "  --skip-packages     Skip apt upgrade and package installation"
             echo "  --skip-swap         Skip swapfile creation"
             echo "  --skip-sysctl       Skip kernel and sysctl tuning"
@@ -322,11 +340,50 @@ for arg in "$@"; do
         --purge-apache)
             PURGE_APACHE=true
             ;;
+        --stack=*)
+            CLI_STACK_CHOICE="${arg#*=}"
+            ;;
         --install-stack)
-            INSTALL_STACK=true
+            CLI_STACK_CHOICE="lemp"
             ;;
         --skip-stack)
-            SKIP_STACK=true
+            CLI_STACK_CHOICE="none"
+            ;;
+        --with-nginx)
+            CLI_WITH_NGINX="true"; CLI_STACK_CHOICE="custom"
+            ;;
+        --without-nginx)
+            CLI_WITH_NGINX="false"; CLI_STACK_CHOICE="custom"
+            ;;
+        --with-mariadb)
+            CLI_WITH_MARIADB="true"; CLI_STACK_CHOICE="custom"
+            ;;
+        --without-mariadb)
+            CLI_WITH_MARIADB="false"; CLI_STACK_CHOICE="custom"
+            ;;
+        --with-redis)
+            CLI_WITH_REDIS="true"; CLI_STACK_CHOICE="custom"
+            ;;
+        --without-redis)
+            CLI_WITH_REDIS="false"; CLI_STACK_CHOICE="custom"
+            ;;
+        --with-php)
+            CLI_WITH_PHP="true"; CLI_STACK_CHOICE="custom"
+            ;;
+        --without-php)
+            CLI_WITH_PHP="false"; CLI_STACK_CHOICE="custom"
+            ;;
+        --with-docker)
+            CLI_WITH_DOCKER="true"; CLI_STACK_CHOICE="custom"
+            ;;
+        --without-docker)
+            CLI_WITH_DOCKER="false"; CLI_STACK_CHOICE="custom"
+            ;;
+        --with-site-cli)
+            CLI_WITH_SITE_CLI="true"; CLI_STACK_CHOICE="custom"
+            ;;
+        --without-site-cli)
+            CLI_WITH_SITE_CLI="false"; CLI_STACK_CHOICE="custom"
             ;;
         --skip-packages)
             SKIP_PACKAGES=true
@@ -442,7 +499,7 @@ ENABLE_UNATTENDED_UPGRADES="${ENV_ENABLE_UNATTENDED_UPGRADES:-true}"
 
 echo
 echo -e "${BOLD}${CYAN}============================================================${NC}"
-echo -e "${BOLD}${CYAN} OpenShip Worker VPS — Setup & Tuning v${SCRIPT_VERSION}${NC}"
+echo -e "${BOLD}${CYAN} VPS Server — Setup & High-Performance Tuning v${SCRIPT_VERSION}${NC}"
 echo -e "${BOLD}${CYAN}============================================================${NC}"
 echo
 
@@ -559,7 +616,7 @@ if [[ "$NON_INTERACTIVE" != "true" && "$DRY_RUN" != "true" ]]; then
         SSH_PORT_INPUT="$(ask_default "SSH port" "$SSH_PORT_INPUT")"
         if [[ -z "$ADMIN_USER_INPUT" ]]; then
             if ask_yes_no "Create a dedicated non-root admin user?" "N"; then
-                ADMIN_USER_INPUT="$(ask_default "Admin username" "openship")"
+                ADMIN_USER_INPUT="$(ask_default "Admin username" "admin")"
             fi
         fi
     fi
@@ -601,11 +658,11 @@ if [[ "$DRY_RUN" == "true" ]]; then
     success "Swap target:          ${ENABLE_SWAP} (${SWAP_SIZE_GB} GB)"
     success "SSH port target:      ${SSH_PORT_INPUT}"
     success "Admin user target:    ${ADMIN_USER_INPUT:-none}"
-    success "Sysctl tuning:        /etc/sysctl.d/99-openship-worker.conf"
-    success "Security limits:      /etc/security/limits.d/99-openship-worker.conf"
-    success "Journald limit:       /etc/systemd/journald.conf.d/99-openship.conf"
+    success "Sysctl tuning:        /etc/sysctl.d/99-server-tuning.conf"
+    success "Security limits:      /etc/security/limits.d/99-server-tuning.conf"
+    success "Journald limit:       /etc/systemd/journald.conf.d/99-server-tuning.conf"
     success "UFW rules:            allow ${SSH_PORT_INPUT}/tcp, allow 80/tcp, allow 443/tcp, allow 443/udp (HTTP/3 QUIC)"
-    success "Fail2ban jail:        /etc/fail2ban/jail.d/sshd-openship.local"
+    success "Fail2ban jail:        /etc/fail2ban/jail.d/sshd-tuning.local"
     echo
     echo -e "${GREEN}Dry-run complete. System configuration is valid.${NC}"
     exit 0
@@ -921,7 +978,8 @@ optimize_worker_kernel_and_limits() {
 
     # 4. File descriptor & process limits
     log "Configuring file descriptor & process limits (nofile 65535, nproc 65535)..."
-    cat > /etc/security/limits.d/99-openship-worker.conf <<'EOF'
+    rm -f /etc/security/limits.d/99-openship-worker.conf 2>/dev/null || true
+    cat > /etc/security/limits.d/99-server-tuning.conf <<'EOF'
 * soft nofile 65535
 * hard nofile 131072
 root soft nofile 65535
@@ -941,8 +999,9 @@ EOF
 
     # 5. Journald size limit
     log "Configuring systemd journal limit (SystemMaxUse=${journal_max})..."
+    rm -f /etc/systemd/journald.conf.d/99-openship.conf 2>/dev/null || true
     mkdir -p /etc/systemd/journald.conf.d
-    cat > /etc/systemd/journald.conf.d/99-openship.conf <<EOF
+    cat > /etc/systemd/journald.conf.d/99-server-tuning.conf <<EOF
 [Journal]
 SystemMaxUse=${journal_max}
 RuntimeMaxUse=${journal_runtime}
@@ -964,9 +1023,10 @@ EOF
 
     # 7. Sysctl low-latency & memory tuning
     modprobe br_netfilter 2>/dev/null || true
-    log "Applying worker sysctl network, low-latency and database optimizations..."
-    cat > /etc/sysctl.d/99-openship-worker.conf <<EOF
-# OpenShip Worker VPS Kernel & Network Tuning (Optimized for FrankenPHP & Containers)
+    log "Applying sysctl network, low-latency and database optimizations..."
+    rm -f /etc/sysctl.d/99-openship-worker.conf 2>/dev/null || true
+    cat > /etc/sysctl.d/99-server-tuning.conf <<EOF
+# Linux Server Kernel & Network Performance Tuning
 
 # Network connection backlog & buffers
 net.core.somaxconn = 65535
@@ -1032,7 +1092,7 @@ fs.inotify.max_user_instances = 1024
 EOF
 
     if [[ "$bbr_applied" == "true" ]]; then
-        cat >> /etc/sysctl.d/99-openship-worker.conf <<'EOF'
+        cat >> /etc/sysctl.d/99-server-tuning.conf <<'EOF'
 # TCP BBR
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
@@ -1119,7 +1179,7 @@ configure_disk_io() {
     log "Configuring I/O scheduler (mq-deadline/none) for NVMe/SSD block devices..."
     mkdir -p /etc/udev/rules.d
     cat > /etc/udev/rules.d/60-io-schedulers.rules <<'EOF'
-# OpenShip: Low-latency I/O scheduler for SSD / NVMe
+# Low-latency I/O scheduler for SSD / NVMe
 ACTION=="add|change", KERNEL=="nvme[0-9]*|sd[a-z]|vd[a-z]", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="none mq-deadline"
 EOF
     udevadm control --reload 2>/dev/null || true
@@ -1355,11 +1415,12 @@ configure_ssh() {
         fi
     fi
 
-    local config="/etc/ssh/sshd_config.d/99-openship-worker.conf"
+    local config="/etc/ssh/sshd_config.d/99-server-tuning.conf"
+    rm -f /etc/ssh/sshd_config.d/99-openship-worker.conf 2>/dev/null || true
     mkdir -p "$(dirname "$config")"
 
     {
-        echo "# OpenShip Worker VPS SSH Configuration"
+        echo "# Hardened SSH Server Configuration"
         echo
         echo "Port ${SSH_PORT_INPUT}"
         echo
@@ -1412,8 +1473,9 @@ configure_fail2ban() {
     section "Fail2ban"
 
     mkdir -p /etc/fail2ban/jail.d
+    rm -f /etc/fail2ban/jail.d/sshd-openship.local 2>/dev/null || true
 
-    cat > /etc/fail2ban/jail.d/sshd-openship.local <<EOF
+    cat > /etc/fail2ban/jail.d/sshd-tuning.local <<EOF
 [sshd]
 enabled = true
 port = ${SSH_PORT_INPUT}
@@ -1471,10 +1533,10 @@ configure_worker_ufw() {
     # Allow SSH
     ufw allow "${SSH_PORT_INPUT}/tcp" comment "SSH"
 
-    # Allow HTTP & HTTPS for OpenShip Edge / Caddy / FrankenPHP
-    ufw allow 80/tcp comment "Web HTTP (OpenShip Edge)"
-    ufw allow 443/tcp comment "Web HTTPS (OpenShip Edge)"
-    ufw allow 443/udp comment "Web HTTPS HTTP/3 QUIC (FrankenPHP / Caddy)"
+    # Allow HTTP & HTTPS web traffic
+    ufw allow 80/tcp comment "Web HTTP"
+    ufw allow 443/tcp comment "Web HTTPS"
+    ufw allow 443/udp comment "Web HTTPS HTTP/3 QUIC"
 
     # Ensure Docker container bridge forwarding is permitted by UFW
     if [[ -f /etc/default/ufw ]]; then
@@ -1500,7 +1562,11 @@ configure_worker_ufw() {
     ufw --force enable
 
     success "UFW firewall active: allowed SSH (${SSH_PORT_INPUT}), HTTP (80/tcp), HTTPS (443/tcp + 443/udp HTTP/3 QUIC)."
-    log "Database ports (3306, 6379) remain isolated on internal Docker network."
+    if command_exists docker && docker network inspect shared-backend &>/dev/null 2>&1; then
+        log "Database ports (3306, 6379) remain isolated on internal Docker network."
+    else
+        log "Database ports (3306, 6379) blocked from external access (local access only)."
+    fi
 }
 
 if [[ "$SKIP_UFW" != "true" ]]; then
@@ -1513,75 +1579,21 @@ fi
 # Step 7: Web & Database Stack (Nginx + MariaDB + Redis + site-cli)
 # ------------------------------------------------------------------------------
 
-install_web_db_stack() {
-    section "Installing Web & Database Stack (Nginx, MariaDB, Redis, PHP-FPM)"
+# ------------------------------------------------------------------------------
+# Helper: Nginx Global Optimizations & site-cli Setup
+# ------------------------------------------------------------------------------
 
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log "[DRY RUN] Would install Nginx with Brotli, MariaDB, Redis, PHP-FPM, Certbot."
-        log "[DRY RUN] Would write Nginx optimizations and configure site-cli."
-        STACK_INSTALLED=true
-        return 0
-    fi
-
-    export DEBIAN_FRONTEND=noninteractive
-
-    run_task "Installing Nginx, MariaDB, Redis, Certbot and PHP-FPM" bash -c "
-        apt-get update -qq && \
-        apt-get install -y -qq \
-            nginx \
-            mariadb-server \
-            mariadb-client \
-            redis-server \
-            certbot \
-            python3-certbot-nginx \
-            php-fpm \
-            php-cli \
-            php-mysql \
-            php-curl \
-            php-mbstring \
-            php-xml \
-            php-zip \
-            php-gd \
-            php-intl \
-            php-bcmath \
-            php-opcache \
-            libnginx-mod-brotli \
-            libnginx-mod-http-headers-more-filter 2>/dev/null || \
-        apt-get install -y -qq \
-            nginx \
-            mariadb-server \
-            mariadb-client \
-            redis-server \
-            certbot \
-            python3-certbot-nginx \
-            php-fpm \
-            php-cli \
-            php-mysql \
-            php-curl \
-            php-mbstring \
-            php-xml \
-            php-zip \
-            php-gd \
-            php-intl \
-            php-bcmath \
-            php-opcache
-    "
-
-    # Configure Nginx global performance optimizations
+configure_nginx_tuning() {
     log "Configuring global Nginx performance tuning and buffers..."
     mkdir -p /etc/nginx/conf.d
 
-    cat > /etc/nginx/conf.d/00-openship-tuning.conf <<'EOF'
-# ==============================================================================
-# OpenShip High-Performance Nginx Global Tuning
-# ==============================================================================
+    # Clean up old configuration file if present
+    rm -f /etc/nginx/conf.d/00-openship-tuning.conf 2>/dev/null || true
 
-# Timeouts & Keepalive
-keepalive_timeout 65s;
-keepalive_requests 1000;
-send_timeout 30s;
-client_body_timeout 30s;
-client_header_timeout 30s;
+    cat > /etc/nginx/conf.d/tuning.conf <<'EOF'
+# ==============================================================================
+# High-Performance Nginx Global Tuning
+# ==============================================================================
 
 # Buffer & Body Limits
 client_max_body_size 128M;
@@ -1589,30 +1601,16 @@ client_body_buffer_size 256k;
 client_header_buffer_size 4k;
 large_client_header_buffers 4 32k;
 
-# Performance flags
-sendfile on;
-tcp_nopush on;
-tcp_nodelay on;
+# Security & Connection Cleanup
 server_tokens off;
 reset_timedout_connection on;
 
-# Gzip Compression
-gzip on;
-gzip_vary on;
-gzip_proxied any;
-gzip_comp_level 5;
-gzip_min_length 256;
-gzip_types
-    text/plain
-    text/css
-    text/xml
-    text/javascript
-    application/json
-    application/javascript
-    application/x-javascript
-    application/xml
-    application/xml+rss
-    image/svg+xml;
+# FastCGI Buffers for PHP applications
+fastcgi_buffer_size 64k;
+fastcgi_buffers 16 32k;
+fastcgi_busy_buffers_size 128k;
+fastcgi_temp_file_write_size 256k;
+fastcgi_read_timeout 300s;
 
 # Brotli Compression (if module is loaded)
 brotli on;
@@ -1629,38 +1627,40 @@ brotli_types
     application/xml
     application/xml+rss
     image/svg+xml;
-
-# FastCGI Buffers for PHP applications
-fastcgi_buffer_size 64k;
-fastcgi_buffers 16 32k;
-fastcgi_busy_buffers_size 128k;
-fastcgi_temp_file_write_size 256k;
-fastcgi_read_timeout 300s;
 EOF
 
-    # Verify Nginx configuration syntax
+    # Test Nginx syntax and auto-clean any unsupported or duplicate directives
+    local test_err
+    test_err="$(nginx -t 2>&1 || true)"
+
+    if echo "$test_err" | grep -q "brotli"; then
+        log "Brotli module not loaded in Nginx; removing brotli directives..."
+        sed -i -E '/brotli/d' /etc/nginx/conf.d/tuning.conf 2>/dev/null || true
+    fi
+
+    # Strip any duplicate directive reported by nginx -t
+    local loop_count=0
+    while ! nginx -t 2>/dev/null && [[ $loop_count -lt 5 ]]; do
+        local dup_dir
+        dup_dir="$(nginx -t 2>&1 | grep -oE '"[a-zA-Z0-9_]+" directive is duplicate' | head -n1 | tr -d '"' | awk '{print $1}' || true)"
+        if [[ -n "$dup_dir" ]]; then
+            log "Resolving duplicate Nginx directive: ${dup_dir}..."
+            sed -i -E "/^[[:space:]]*${dup_dir}[[:space:]]/d" /etc/nginx/conf.d/tuning.conf 2>/dev/null || break
+        else
+            break
+        fi
+        loop_count=$((loop_count + 1))
+    done
+
     if nginx -t 2>/dev/null; then
         systemctl enable --now nginx 2>/dev/null || true
         systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
-        success "Nginx active with Brotli & buffer optimizations."
+        success "Nginx active with performance tuning (/etc/nginx/conf.d/tuning.conf)."
     else
-        # If brotli directives fail because module is not available, strip brotli lines
-        sed -i -E '/brotli/d' /etc/nginx/conf.d/00-openship-tuning.conf 2>/dev/null || true
+        warn "Nginx syntax test failed; disabling conf.d/tuning.conf to keep server running."
+        mv /etc/nginx/conf.d/tuning.conf /etc/nginx/conf.d/tuning.conf.bak 2>/dev/null || true
         systemctl enable --now nginx 2>/dev/null || true
         systemctl restart nginx 2>/dev/null || true
-        success "Nginx active with Gzip & buffer optimizations."
-    fi
-
-    # Start and enable MariaDB and Redis
-    systemctl enable --now mariadb 2>/dev/null || true
-    systemctl enable --now redis-server 2>/dev/null || true
-    success "MariaDB and Redis services enabled and running."
-
-    # Start and enable PHP-FPM
-    local php_sock
-    php_sock="$(find /run/php/ -name 'php*-fpm.sock' 2>/dev/null | head -n1 || true)"
-    if [[ -n "$php_sock" ]]; then
-        success "PHP-FPM active: ${php_sock}"
     fi
 
     # Ensure UFW ports 80 and 443 are allowed
@@ -1669,8 +1669,160 @@ EOF
         ufw allow 443/tcp comment "Web HTTPS (Nginx)" >/dev/null 2>&1 || true
         ufw allow 443/udp comment "Web HTTPS HTTP/3 QUIC (Nginx)" >/dev/null 2>&1 || true
     fi
+}
 
-    # Install / link site-cli
+# ------------------------------------------------------------------------------
+# Modular Stack Components
+# ------------------------------------------------------------------------------
+
+install_component_nginx() {
+    section "Installing Nginx & Performance Modules"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would install Nginx with Brotli and Certbot."
+        INSTALLED_COMPONENTS+=("Nginx (with Brotli & buffers tuned)")
+        return 0
+    fi
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    run_task "Installing Nginx and Certbot packages" bash -c "
+        apt-get update -qq && \
+        apt-get install -y -qq \
+            nginx \
+            certbot \
+            python3-certbot-nginx \
+            libnginx-mod-brotli \
+            libnginx-mod-http-headers-more-filter 2>/dev/null || \
+        apt-get install -y -qq nginx certbot python3-certbot-nginx
+    "
+
+    configure_nginx_tuning
+    INSTALLED_COMPONENTS+=("Nginx (with Brotli & buffers tuned)")
+}
+
+install_component_mariadb() {
+    section "Installing MariaDB 11 Server & Client"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would install MariaDB Server & Client."
+        INSTALLED_COMPONENTS+=("MariaDB Server (127.0.0.1:3306)")
+        return 0
+    fi
+
+    export DEBIAN_FRONTEND=noninteractive
+    run_task "Installing MariaDB packages" apt-get install -y -qq mariadb-server mariadb-client
+    systemctl enable --now mariadb 2>/dev/null || true
+    success "MariaDB active on 127.0.0.1:3306."
+    INSTALLED_COMPONENTS+=("MariaDB Server (127.0.0.1:3306)")
+}
+
+install_component_redis() {
+    section "Installing Redis In-Memory Cache"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would install Redis Server."
+        INSTALLED_COMPONENTS+=("Redis Cache (127.0.0.1:6379)")
+        return 0
+    fi
+
+    export DEBIAN_FRONTEND=noninteractive
+    run_task "Installing Redis server" apt-get install -y -qq redis-server
+    systemctl enable --now redis-server 2>/dev/null || true
+    success "Redis active on 127.0.0.1:6379."
+    INSTALLED_COMPONENTS+=("Redis Cache (127.0.0.1:6379)")
+}
+
+install_component_php() {
+    section "Installing PHP-FPM & Extensions"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would install PHP-FPM with standard CMS extensions."
+        INSTALLED_COMPONENTS+=("PHP-FPM (extensions for WordPress, OpenCart, Laravel)")
+        return 0
+    fi
+
+    export DEBIAN_FRONTEND=noninteractive
+    run_task "Installing PHP-FPM packages" apt-get install -y -qq \
+        php-fpm \
+        php-cli \
+        php-mysql \
+        php-curl \
+        php-mbstring \
+        php-xml \
+        php-zip \
+        php-gd \
+        php-intl \
+        php-bcmath \
+        php-opcache
+
+    local php_sock
+    php_sock="$(find /run/php/ -name 'php*-fpm.sock' 2>/dev/null | head -n1 || true)"
+    if [[ -n "$php_sock" ]]; then
+        success "PHP-FPM active: ${php_sock}"
+    fi
+    INSTALLED_COMPONENTS+=("PHP-FPM (${php_sock:-active})")
+}
+
+install_component_docker() {
+    section "Installing Docker Engine & Docker Compose v2"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would install Docker Engine and Docker Compose v2."
+        INSTALLED_COMPONENTS+=("Docker Engine & Docker Compose v2")
+        return 0
+    fi
+
+    if command_exists docker && docker compose version &>/dev/null; then
+        success "Docker Engine and Docker Compose v2 already present."
+        configure_docker
+        INSTALLED_COMPONENTS+=("Docker Engine & Docker Compose v2")
+        return 0
+    fi
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    log "Setting up official Docker repository..."
+    apt-get update -qq
+    apt-get install -y -qq ca-certificates curl gnupg
+
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc 2>/dev/null || \
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null || true
+    chmod a+r /etc/apt/keyrings/docker.* 2>/dev/null || true
+
+    local arch codename
+    arch="$(dpkg --print-architecture 2>/dev/null || echo "amd64")"
+    codename="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+
+    echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${codename} stable" > /etc/apt/sources.list.d/docker.list
+
+    run_task "Installing Docker packages" bash -c "
+        apt-get update -qq && \
+        apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    "
+
+    systemctl enable --now docker 2>/dev/null || true
+    configure_docker
+
+    if command_exists docker; then
+        local d_ver c_ver
+        d_ver="$(docker --version 2>/dev/null | awk '{print $3}' | tr -d ',' || echo "")"
+        c_ver="$(docker compose version 2>/dev/null || echo "")"
+        success "Docker Engine (${d_ver}) and ${c_ver} installed."
+        INSTALLED_COMPONENTS+=("Docker Engine (${d_ver}) & ${c_ver}")
+    fi
+}
+
+install_component_site_cli() {
+    section "Installing site-cli Management Tool"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would link site-cli to /usr/local/bin/site-cli."
+        INSTALLED_COMPONENTS+=("site-cli (/usr/local/bin/site-cli)")
+        return 0
+    fi
+
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local site_cli_src="${script_dir}/../site-manager.sh"
@@ -1680,50 +1832,232 @@ EOF
         ln -sf "$site_cli_src" /usr/local/bin/site-cli
         success "CLI management tool installed: /usr/local/bin/site-cli -> ${site_cli_src}"
     else
-        # Fallback to direct curl if run standalone via pipe
         log "Downloading site-cli to /usr/local/bin/site-cli..."
         if curl -fsSL "https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/services/site-manager.sh" -o /usr/local/bin/site-cli 2>/dev/null; then
             chmod +x /usr/local/bin/site-cli
             success "CLI management tool installed: /usr/local/bin/site-cli"
         else
-            warn "Could not link site-cli automatically. You can install it manually from services/site-manager.sh."
+            warn "Could not link site-cli automatically."
+        fi
+    fi
+    INSTALLED_COMPONENTS+=("site-cli (/usr/local/bin/site-cli)")
+}
+
+# ------------------------------------------------------------------------------
+# High-Level Stack Orchestration
+# ------------------------------------------------------------------------------
+
+install_full_lemp() {
+    install_component_nginx
+    install_component_mariadb
+    install_component_redis
+    install_component_php
+    install_component_site_cli
+}
+
+install_custom_selection() {
+    section "Раздельный выбор пакетов / Custom Package Selection"
+
+    local do_nginx="${CLI_WITH_NGINX:-}"
+    local do_mariadb="${CLI_WITH_MARIADB:-}"
+    local do_redis="${CLI_WITH_REDIS:-}"
+    local do_php="${CLI_WITH_PHP:-}"
+    local do_docker="${CLI_WITH_DOCKER:-}"
+    local do_site_cli="${CLI_WITH_SITE_CLI:-}"
+
+    if [[ "$NON_INTERACTIVE" != "true" ]]; then
+        # If no explicit CLI component flags were passed, show interactive package picker
+        if [[ -z "$do_nginx" && -z "$do_mariadb" && -z "$do_redis" && -z "$do_php" && -z "$do_docker" && -z "$do_site_cli" ]]; then
+            echo
+            echo -e "  ${BOLD}Список доступных пакетов для раздельной установки:${NC}"
+            echo -e "    ${CYAN}[1]${NC} Nginx     — Веб-сервер (Brotli, HTTP/3, headers-more, тюнинг буферов)"
+            echo -e "    ${CYAN}[2]${NC} MariaDB   — СУБД MariaDB Server & Client (127.0.0.1:3306)"
+            echo -e "    ${CYAN}[3]${NC} Redis     — In-memory кэш сессий и объектов (127.0.0.1:6379)"
+            echo -e "    ${CYAN}[4]${NC} PHP-FPM   — PHP 8.x + модули для CMS (OpenCart, WordPress, Laravel)"
+            echo -e "    ${CYAN}[5]${NC} Docker    — Docker Engine & Docker Compose v2"
+            echo -e "    ${CYAN}[6]${NC} site-cli  — Утилита управления сайтами и БД (/usr/local/bin/site-cli)"
+            echo
+            echo -e "  Введите номера пакетов через запятую или пробел (например: ${BOLD}1,2,4,6${NC}),"
+            echo -e "  'all' для всех, или нажмите ${BOLD}Enter${NC} для пошагового выбора [Y/n]:"
+            read -r -p "  Пакеты: " pkg_input
+
+            case "$pkg_input" in
+                all|ALL)
+                    do_nginx="true"
+                    do_mariadb="true"
+                    do_redis="true"
+                    do_php="true"
+                    do_docker="true"
+                    do_site_cli="true"
+                    ;;
+                *[1-6]*)
+                    [[ "$pkg_input" =~ 1 ]] && do_nginx="true" || do_nginx="false"
+                    [[ "$pkg_input" =~ 2 ]] && do_mariadb="true" || do_mariadb="false"
+                    [[ "$pkg_input" =~ 3 ]] && do_redis="true" || do_redis="false"
+                    [[ "$pkg_input" =~ 4 ]] && do_php="true" || do_php="false"
+                    [[ "$pkg_input" =~ 5 ]] && do_docker="true" || do_docker="false"
+                    [[ "$pkg_input" =~ 6 ]] && do_site_cli="true" || do_site_cli="false"
+                    ;;
+                none|NONE|0)
+                    do_nginx="false"
+                    do_mariadb="false"
+                    do_redis="false"
+                    do_php="false"
+                    do_docker="false"
+                    do_site_cli="false"
+                    ;;
+                *)
+                    echo
+                    log "Пошаговый выбор компонентов:"
+                    ask_yes_no "  [1/6] Установить Nginx (с Brotli и оптимизацией)?" "Y" && do_nginx="true" || do_nginx="false"
+                    ask_yes_no "  [2/6] Установить MariaDB Server & Client?" "Y" && do_mariadb="true" || do_mariadb="false"
+                    ask_yes_no "  [3/6] Установить Redis Server?" "Y" && do_redis="true" || do_redis="false"
+                    ask_yes_no "  [4/6] Установить PHP-FPM и расширения CMS?" "Y" && do_php="true" || do_php="false"
+                    ask_yes_no "  [5/6] Установить Docker Engine & Docker Compose v2?" "N" && do_docker="true" || do_docker="false"
+                    ask_yes_no "  [6/6] Установить site-cli (/usr/local/bin/site-cli)?" "Y" && do_site_cli="true" || do_site_cli="false"
+                    ;;
+            esac
+        else
+            if [[ -z "$do_nginx" ]]; then
+                ask_yes_no "Установить Nginx?" "Y" && do_nginx="true" || do_nginx="false"
+            fi
+            if [[ -z "$do_mariadb" ]]; then
+                ask_yes_no "Установить MariaDB?" "Y" && do_mariadb="true" || do_mariadb="false"
+            fi
+            if [[ -z "$do_redis" ]]; then
+                ask_yes_no "Установить Redis?" "Y" && do_redis="true" || do_redis="false"
+            fi
+            if [[ -z "$do_php" ]]; then
+                ask_yes_no "Установить PHP-FPM?" "Y" && do_php="true" || do_php="false"
+            fi
+            if [[ -z "$do_docker" ]]; then
+                ask_yes_no "Установить Docker?" "N" && do_docker="true" || do_docker="false"
+            fi
+            if [[ -z "$do_site_cli" ]]; then
+                ask_yes_no "Установить site-cli?" "Y" && do_site_cli="true" || do_site_cli="false"
+            fi
         fi
     fi
 
-    STACK_INSTALLED=true
-}
-
-offer_and_install_stack() {
-    if [[ "$SKIP_STACK" == "true" ]]; then
-        log "Stack installation skipped (--skip-stack)."
-        return 0
+    # Summary of selected packages
+    echo
+    echo -e "  ${BOLD}Выбрано для установки:${NC}"
+    local any_selected=false
+    if [[ "$do_nginx" == "true" ]]; then
+        echo -e "    • ${GREEN}Nginx${NC} (веб-сервер + Brotli + тюнинг)"
+        any_selected=true
+    fi
+    if [[ "$do_mariadb" == "true" ]]; then
+        echo -e "    • ${GREEN}MariaDB${NC} (сервер и клиент БД 127.0.0.1:3306)"
+        any_selected=true
+    fi
+    if [[ "$do_redis" == "true" ]]; then
+        echo -e "    • ${GREEN}Redis${NC} (in-memory кэш 127.0.0.1:6379)"
+        any_selected=true
+    fi
+    if [[ "$do_php" == "true" ]]; then
+        echo -e "    • ${GREEN}PHP-FPM${NC} (PHP 8.x + CMS модули)"
+        any_selected=true
+    fi
+    if [[ "$do_docker" == "true" ]]; then
+        echo -e "    • ${GREEN}Docker${NC} (Engine + Compose v2)"
+        any_selected=true
+    fi
+    if [[ "$do_site_cli" == "true" ]]; then
+        echo -e "    • ${GREEN}site-cli${NC} (утилита управления сайтами в /usr/local/bin)"
+        any_selected=true
     fi
 
-    local do_install=false
-    if [[ "$INSTALL_STACK" == "true" ]]; then
-        do_install=true
-    elif [[ "$NON_INTERACTIVE" == "true" ]]; then
-        do_install=false
-    else
-        echo
-        echo -e "  ${BOLD}${CYAN}Would you like to install the Web & Database Stack now?${NC}"
-        echo -e "  Includes: ${BOLD}Nginx (with Brotli, headers-more & buffer tuning), MariaDB, Redis, PHP-FPM, and site-cli${NC}"
-        read -r -p "  Install stack? [Y/n] " response
-        case "$response" in
-            [nN][oO]|[nN])
-                do_install=false
+    if [[ "$any_selected" != "true" ]]; then
+        log "Пакеты не выбраны. Пропуск установки программного стека."
+        return 0
+    fi
+    echo
+
+    if [[ "$do_nginx" == "true" ]]; then
+        install_component_nginx
+    fi
+    if [[ "$do_mariadb" == "true" ]]; then
+        install_component_mariadb
+    fi
+    if [[ "$do_redis" == "true" ]]; then
+        install_component_redis
+    fi
+    if [[ "$do_php" == "true" ]]; then
+        install_component_php
+    fi
+    if [[ "$do_docker" == "true" ]]; then
+        install_component_docker
+    fi
+    if [[ "$do_site_cli" == "true" ]]; then
+        install_component_site_cli
+    fi
+}
+
+# ------------------------------------------------------------------------------
+# Interactive Stack Menu & Dispatcher
+# ------------------------------------------------------------------------------
+
+offer_and_install_stack() {
+    local choice=""
+
+    if [[ -n "$CLI_STACK_CHOICE" ]]; then
+        case "$CLI_STACK_CHOICE" in
+            lemp|native|all|full)
+                choice=1
+                ;;
+            custom)
+                choice=2
+                ;;
+            docker)
+                choice=3
+                ;;
+            none|skip)
+                choice=4
                 ;;
             *)
-                do_install=true
+                warn "Unknown --stack option '${CLI_STACK_CHOICE}'. Defaulting to skip."
+                choice=4
+                ;;
+        esac
+    elif [[ "$NON_INTERACTIVE" == "true" ]]; then
+        choice=4
+    else
+        echo
+        echo -e "  ${BOLD}${CYAN}Установка программного стека / Software Stack Installation${NC}"
+        echo -e "  Выберите вариант развертывания для сервера:"
+        echo -e "    ${BOLD}1)${NC} Нативный LEMP (Nginx + MariaDB + Redis + PHP-FPM + site-cli)"
+        echo -e "    ${BOLD}2)${NC} Раздельный выбор пакетов (Nginx, MariaDB, Redis, PHP-FPM, Docker, site-cli)"
+        echo -e "    ${BOLD}3)${NC} Docker стек (Docker Engine + Docker Compose v2)"
+        echo -e "    ${BOLD}4)${NC} Пропустить установку ПО (только тюнинг сервера)"
+        echo
+        read -r -p "  Ваш выбор [1-4] (по умолчанию: 1): " user_input
+        case "${user_input:-1}" in
+            1) choice=1 ;;
+            2) choice=2 ;;
+            3) choice=3 ;;
+            4) choice=4 ;;
+            *)
+                warn "Неверный выбор '${user_input}'. Пропуск установки стека."
+                choice=4
                 ;;
         esac
     fi
 
-    if [[ "$do_install" == "true" ]]; then
-        install_web_db_stack
-    else
-        log "Stack installation skipped. You can install anytime later with: sudo ./tune.sh --install-stack"
-    fi
+    case "$choice" in
+        1)
+            install_full_lemp
+            ;;
+        2)
+            install_custom_selection
+            ;;
+        3)
+            install_component_docker
+            ;;
+        4|*)
+            log "Software stack installation skipped."
+            ;;
+    esac
 }
 
 offer_and_install_stack
@@ -1733,7 +2067,7 @@ offer_and_install_stack
 # ------------------------------------------------------------------------------
 
 section "Tuning Complete"
-echo -e "${GREEN}${BOLD}Worker VPS tuning successfully finished!${NC}"
+echo -e "${GREEN}${BOLD}Server tuning successfully finished!${NC}"
 echo
 echo "Applied settings:"
 echo "  • System packages:   up to date (base utilities installed)"
@@ -1754,21 +2088,28 @@ fi
 if [[ "$ENABLE_FAIL2BAN" == "true" ]]; then
     echo "  • Fail2ban:          protecting SSH on port ${SSH_PORT_INPUT}"
 fi
-if [[ "$STACK_INSTALLED" == "true" ]]; then
-    echo "  • Nginx:             active with Brotli & buffer optimizations (:80, :443)"
-    echo "  • MariaDB:           active (127.0.0.1:3306 / local socket)"
-    echo "  • Redis:             active (127.0.0.1:6379)"
-    echo "  • site-cli:          installed (/usr/local/bin/site-cli)"
-fi
-echo
-echo "Next steps for this Worker VPS:"
-if [[ "$STACK_INSTALLED" == "true" ]]; then
-    echo "  • Manage websites:   site-cli create my-shop.com --template opencart --ssl"
-    echo "  • List websites:     site-cli list"
-    echo "  • Manage databases:  site-cli db my-shop.com [create|dump|drop]"
+
+if [[ ${#INSTALLED_COMPONENTS[@]} -gt 0 ]]; then
+    echo
+    echo "Installed software stack:"
+    for comp in "${INSTALLED_COMPONENTS[@]}"; do
+        echo "  • ${comp}"
+    done
+    echo
+    echo "Next steps for this server:"
+    if [[ " ${INSTALLED_COMPONENTS[*]} " =~ "site-cli" ]]; then
+        echo "  • Manage websites:   site-cli create my-shop.com --template opencart --ssl"
+        echo "  • List websites:     site-cli list"
+        echo "  • Manage databases:  site-cli db my-shop.com [create|dump|drop]"
+    elif [[ " ${INSTALLED_COMPONENTS[*]} " =~ "Docker" ]]; then
+        echo "  • Deploy DB stack:   cd ../mariadb-redis && sudo ./deploy.sh"
+        echo "  • Check containers:  docker ps"
+    fi
 else
-    echo "  1. Install Web/DB stack: sudo ./tune.sh --install-stack"
-    echo "  2. Or deploy Docker services: cd ../mariadb-redis && sudo ./deploy.sh"
-    echo "  3. Connect this worker to OpenShip Control Plane (or deploy Edge)."
+    echo
+    echo "Next steps for this server:"
+    echo "  • Install Full LEMP: sudo ./tune.sh --stack=lemp"
+    echo "  • Install Docker:    sudo ./tune.sh --stack=docker"
+    echo "  • Custom stack:      sudo ./tune.sh --with-nginx --with-php"
 fi
 echo

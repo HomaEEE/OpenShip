@@ -59,11 +59,17 @@ sudo ./services/server-tuning/tune.sh --non-interactive
    - Открыты порты: SSH (дефолт 22), `80/tcp` (HTTP), `443/tcp` и `443/udp` (HTTP/3 QUIC).
 8. **Проверка и удаление Apache**:
    - Автоматический поиск и очистка `apache2` пакетов и конфигураций, предотвращающий конфликты за порты 80 и 443.
-9. **Установка Web & DB стека (Nginx + MariaDB + Redis)**:
-   - Nginx с поддержкой Brotli, headers-more, оптимизированными FastCGI и HTTP/2 буферами.
-   - MariaDB Server & Redis Server (нативная установка через APT).
-   - PHP-FPM с набором модулей под WordPress / OpenCart / Laravel.
-   - Установка CLI-утилиты `site-cli` для управления сайтами и базами данных.
+9. **Интерактивный выбор программного стека**:
+   - `1) Нативный LEMP (Nginx + MariaDB + Redis + PHP-FPM + site-cli)`: Полноценный производительный стек с Nginx (Brotli, headers-more), MariaDB 11, Redis, PHP-FPM с расширениями для CMS (OpenCart, WordPress, Laravel) и утилитой `site-cli`.
+   - `2) Раздельный выбор пакетов`: Гранулярная установка отдельных пакетов (номерами `1,2,4,6` или пошагово [Y/n]):
+     - `[1] Nginx` (веб-сервер + Brotli + HTTP/3 + тюнинг)
+     - `[2] MariaDB` (сервер и клиент БД)
+     - `[3] Redis` (in-memory кэш)
+     - `[4] PHP-FPM` (PHP 8.x + CMS модули)
+     - `[5] Docker` (Docker Engine + Compose v2)
+     - `[6] site-cli` (CLI-утилита `/usr/local/bin/site-cli`)
+   - `3) Docker стек (Docker Engine + Docker Compose v2)`: Только Docker-окружение для контейнеров.
+   - `4) Пропустить установку ПО`: Только системный тюнинг VPS без пакетов стека.
 
 ---
 
@@ -74,8 +80,15 @@ sudo ./services/server-tuning/tune.sh --non-interactive
 | `--non-interactive` | Применить настройки без диалоговых окон (из `.env` или дефолты) |
 | `--dry-run` | Проверить совместимость и параметры без изменения системы |
 | `--purge-apache` | Автоматически остановить и удалить Apache (apache2) при обнаружении |
-| `--install-stack` | Установить Nginx (Brotli/модули), MariaDB, Redis, PHP-FPM и site-cli |
-| `--skip-stack` | Пропустить предложение установить Web/DB стек в конце |
+| `--stack=CHOICE` | Выбор стека: `lemp`/`native`, `custom`, `docker`, `none` |
+| `--install-stack` | Алиас для `--stack=lemp` (Nginx, MariaDB, Redis, PHP-FPM, site-cli) |
+| `--skip-stack` | Алиас для `--stack=none` (пропустить установку стека) |
+| `--with-nginx / --without-nginx` | Установить / пропустить Nginx |
+| `--with-mariadb / --without-mariadb` | Установить / пропустить MariaDB |
+| `--with-redis / --without-redis` | Установить / пропустить Redis |
+| `--with-php / --without-php` | Установить / пропустить PHP-FPM |
+| `--with-docker / --without-docker` | Установить / пропустить Docker & Compose |
+| `--with-site-cli / --without-site-cli` | Установить / пропустить site-cli |
 | `--ssh-port=PORT` | Указать кастомный SSH-порт (дефолт `22`) |
 | `--swap-size=GB` | Указать размер swapfile в гигабайтах |
 | `--admin-user=USER` | Создать отдельного sudo-администратора |
