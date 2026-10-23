@@ -778,15 +778,11 @@ check_and_remove_apache() {
         warn "Non-interactive mode: stopping and purging Apache..."
         do_purge=true
     else
-        read -r -p "  Stop and completely remove Apache (apache2)? [Y/n] " response
-        case "$response" in
-            [nN][oO]|[nN])
-                do_purge=false
-                ;;
-            *)
-                do_purge=true
-                ;;
-        esac
+        if ask_yes_no "Stop and completely remove Apache (apache2)?" "Y"; then
+            do_purge=true
+        else
+            do_purge=false
+        fi
     fi
 
     if [[ "$do_purge" == "true" ]]; then
@@ -1868,6 +1864,11 @@ install_custom_selection() {
     if [[ "$NON_INTERACTIVE" != "true" ]]; then
         # If no explicit CLI component flags were passed, show interactive package picker
         if [[ -z "$do_nginx" && -z "$do_mariadb" && -z "$do_redis" && -z "$do_php" && -z "$do_docker" && -z "$do_site_cli" ]]; then
+            if [[ ! -e /dev/tty || ! -r /dev/tty ]]; then
+                log "No TTY detected. Skipping custom package selection."
+                return 0
+            fi
+
             echo
             echo -e "  ${BOLD}Список доступных пакетов для раздельной установки:${NC}"
             echo -e "    ${CYAN}[1]${NC} Nginx     — Веб-сервер (Brotli, HTTP/3, headers-more, тюнинг буферов)"
@@ -1879,7 +1880,12 @@ install_custom_selection() {
             echo
             echo -e "  Введите номера пакетов через запятую или пробел (например: ${BOLD}1,2,4,6${NC}),"
             echo -e "  'all' для всех, или нажмите ${BOLD}Enter${NC} для пошагового выбора [Y/n]:"
-            read -r -p "  Пакеты: " pkg_input
+
+            local pkg_input=""
+            if ! read -r -p "  Пакеты: " pkg_input </dev/tty; then
+                pkg_input=""
+            fi
+            pkg_input="${pkg_input//[$'\r\n']/}"
 
             case "$pkg_input" in
                 all|ALL)
@@ -2022,6 +2028,9 @@ offer_and_install_stack() {
         esac
     elif [[ "$NON_INTERACTIVE" == "true" ]]; then
         choice=4
+    elif [[ ! -e /dev/tty || ! -r /dev/tty ]]; then
+        warn "No interactive TTY detected. Skipping software stack installation."
+        choice=4
     else
         echo
         echo -e "  ${BOLD}${CYAN}Установка программного стека / Software Stack Installation${NC}"
@@ -2031,17 +2040,29 @@ offer_and_install_stack() {
         echo -e "    ${BOLD}3)${NC} Docker стек (Docker Engine + Docker Compose v2)"
         echo -e "    ${BOLD}4)${NC} Пропустить установку ПО (только тюнинг сервера)"
         echo
-        read -r -p "  Ваш выбор [1-4] (по умолчанию: 1): " user_input
-        case "${user_input:-1}" in
-            1) choice=1 ;;
-            2) choice=2 ;;
-            3) choice=3 ;;
-            4) choice=4 ;;
-            *)
-                warn "Неверный выбор '${user_input}'. Пропуск установки стека."
+
+        local user_input=""
+        while true; do
+            if ! read -r -p "  Ваш выбор [1-4]: " user_input </dev/tty; then
+                echo
+                warn "Ввод прерван. Пропуск установки программного стека."
                 choice=4
-                ;;
-        esac
+                break
+            fi
+            user_input="${user_input//[$'\r\n\t ']/}"
+            case "$user_input" in
+                1) choice=1; break ;;
+                2) choice=2; break ;;
+                3) choice=3; break ;;
+                4) choice=4; break ;;
+                "")
+                    echo -e "  ${YELLOW}Пожалуйста, введите цифру от 1 до 4 (1 - LEMP, 2 - Выбор пакетов, 3 - Docker, 4 - Пропустить)${NC}"
+                    ;;
+                *)
+                    echo -e "  ${YELLOW}Неверный выбор '${user_input}'. Введите цифру от 1 до 4.${NC}"
+                    ;;
+            esac
+        done
     fi
 
     case "$choice" in
