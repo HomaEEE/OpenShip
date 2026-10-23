@@ -47,7 +47,7 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly SCRIPT_VERSION="1.1.0"
+readonly SCRIPT_VERSION="1.2.0"
 readonly LOG_FILE="/var/log/openship-worker-tuning.log"
 
 # Minimum RAM thresholds (Worker role)
@@ -275,6 +275,10 @@ SKIP_SWAP=false
 SKIP_SYSCTL=false
 SKIP_UFW=false
 SKIP_SSH=false
+PURGE_APACHE=false
+INSTALL_STACK=false
+SKIP_STACK=false
+STACK_INSTALLED=false
 
 CLI_SSH_PORT=""
 CLI_SWAP_SIZE=""
@@ -297,6 +301,9 @@ for arg in "$@"; do
             echo "  --ssh-key=KEY       Authorize SSH public key (enables key-only SSH access)"
             echo "  --swap-size=GB      Override swap size in GB (default: auto based on RAM)"
             echo "  --admin-user=USER   Configure dedicated non-root admin user"
+            echo "  --purge-apache      Automatically stop and purge Apache web server if detected"
+            echo "  --install-stack     Install Nginx (with Brotli & performance modules), MariaDB, and Redis"
+            echo "  --skip-stack        Skip the post-tuning Web/DB stack installation prompt"
             echo "  --skip-packages     Skip apt upgrade and package installation"
             echo "  --skip-swap         Skip swapfile creation"
             echo "  --skip-sysctl       Skip kernel and sysctl tuning"
@@ -311,6 +318,15 @@ for arg in "$@"; do
             ;;
         --non-interactive)
             NON_INTERACTIVE=true
+            ;;
+        --purge-apache)
+            PURGE_APACHE=true
+            ;;
+        --install-stack)
+            INSTALL_STACK=true
+            ;;
+        --skip-stack)
+            SKIP_STACK=true
             ;;
         --skip-packages)
             SKIP_PACKAGES=true
@@ -677,6 +693,67 @@ install_and_update_packages() {
         warn "A system restart is recommended after kernel updates."
     fi
 }
+
+# ------------------------------------------------------------------------------
+# Checking and removing Apache web server
+# ------------------------------------------------------------------------------
+
+check_and_remove_apache() {
+    section "Checking for conflicting web servers (Apache)"
+
+    local has_apache=false
+    if command_exists apache2 || dpkg -s apache2 &>/dev/null 2>&1 || systemctl list-unit-files apache2.service &>/dev/null 2>&1; then
+        has_apache=true
+    fi
+
+    if [[ "$has_apache" != "true" ]]; then
+        success "No Apache installation detected."
+        return 0
+    fi
+
+    warn "Apache web server (apache2) is installed on this system."
+    warn "Apache conflicts with Nginx on port 80/443 and consumes memory."
+
+    local do_purge=false
+    if [[ "$PURGE_APACHE" == "true" ]]; then
+        do_purge=true
+    elif [[ "$NON_INTERACTIVE" == "true" ]]; then
+        warn "Non-interactive mode: stopping and purging Apache..."
+        do_purge=true
+    else
+        read -r -p "  Stop and completely remove Apache (apache2)? [Y/n] " response
+        case "$response" in
+            [nN][oO]|[nN])
+                do_purge=false
+                ;;
+            *)
+                do_purge=true
+                ;;
+        esac
+    fi
+
+    if [[ "$do_purge" == "true" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log "[DRY RUN] Would stop, disable and purge apache2 packages and configs."
+            return 0
+        fi
+
+        log "Stopping and disabling Apache service..."
+        systemctl stop apache2 2>/dev/null || true
+        systemctl disable apache2 2>/dev/null || true
+        systemctl mask apache2 2>/dev/null || true
+
+        run_task "Purging Apache packages and configurations" bash -c "export DEBIAN_FRONTEND=noninteractive; apt-get purge -y -qq apache2 apache2-utils apache2-bin apache2-data apache2.2-common 2>/dev/null || true"
+        run_task "Cleaning up unused Apache dependencies" bash -c "export DEBIAN_FRONTEND=noninteractive; apt-get autoremove -y -qq"
+
+        rm -rf /etc/apache2 /var/log/apache2 2>/dev/null || true
+        success "Apache web server successfully removed."
+    else
+        warn "Apache was preserved. Note: Nginx cannot bind to port 80/443 while Apache is active."
+    fi
+}
+
+check_and_remove_apache
 
 if [[ "$SKIP_PACKAGES" != "true" ]]; then
     install_and_update_packages
@@ -1433,6 +1510,225 @@ else
 fi
 
 # ------------------------------------------------------------------------------
+# Step 7: Web & Database Stack (Nginx + MariaDB + Redis + site-cli)
+# ------------------------------------------------------------------------------
+
+install_web_db_stack() {
+    section "Installing Web & Database Stack (Nginx, MariaDB, Redis, PHP-FPM)"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would install Nginx with Brotli, MariaDB, Redis, PHP-FPM, Certbot."
+        log "[DRY RUN] Would write Nginx optimizations and configure site-cli."
+        STACK_INSTALLED=true
+        return 0
+    fi
+
+    export DEBIAN_FRONTEND=noninteractive
+
+    run_task "Installing Nginx, MariaDB, Redis, Certbot and PHP-FPM" bash -c "
+        apt-get update -qq && \
+        apt-get install -y -qq \
+            nginx \
+            mariadb-server \
+            mariadb-client \
+            redis-server \
+            certbot \
+            python3-certbot-nginx \
+            php-fpm \
+            php-cli \
+            php-mysql \
+            php-curl \
+            php-mbstring \
+            php-xml \
+            php-zip \
+            php-gd \
+            php-intl \
+            php-bcmath \
+            php-opcache \
+            libnginx-mod-brotli \
+            libnginx-mod-http-headers-more-filter 2>/dev/null || \
+        apt-get install -y -qq \
+            nginx \
+            mariadb-server \
+            mariadb-client \
+            redis-server \
+            certbot \
+            python3-certbot-nginx \
+            php-fpm \
+            php-cli \
+            php-mysql \
+            php-curl \
+            php-mbstring \
+            php-xml \
+            php-zip \
+            php-gd \
+            php-intl \
+            php-bcmath \
+            php-opcache
+    "
+
+    # Configure Nginx global performance optimizations
+    log "Configuring global Nginx performance tuning and buffers..."
+    mkdir -p /etc/nginx/conf.d
+
+    cat > /etc/nginx/conf.d/00-openship-tuning.conf <<'EOF'
+# ==============================================================================
+# OpenShip High-Performance Nginx Global Tuning
+# ==============================================================================
+
+# Timeouts & Keepalive
+keepalive_timeout 65s;
+keepalive_requests 1000;
+send_timeout 30s;
+client_body_timeout 30s;
+client_header_timeout 30s;
+
+# Buffer & Body Limits
+client_max_body_size 128M;
+client_body_buffer_size 256k;
+client_header_buffer_size 4k;
+large_client_header_buffers 4 32k;
+
+# Performance flags
+sendfile on;
+tcp_nopush on;
+tcp_nodelay on;
+server_tokens off;
+reset_timedout_connection on;
+
+# Gzip Compression
+gzip on;
+gzip_vary on;
+gzip_proxied any;
+gzip_comp_level 5;
+gzip_min_length 256;
+gzip_types
+    text/plain
+    text/css
+    text/xml
+    text/javascript
+    application/json
+    application/javascript
+    application/x-javascript
+    application/xml
+    application/xml+rss
+    image/svg+xml;
+
+# Brotli Compression (if module is loaded)
+brotli on;
+brotli_comp_level 6;
+brotli_static on;
+brotli_types
+    text/plain
+    text/css
+    text/xml
+    text/javascript
+    application/json
+    application/javascript
+    application/x-javascript
+    application/xml
+    application/xml+rss
+    image/svg+xml;
+
+# FastCGI Buffers for PHP applications
+fastcgi_buffer_size 64k;
+fastcgi_buffers 16 32k;
+fastcgi_busy_buffers_size 128k;
+fastcgi_temp_file_write_size 256k;
+fastcgi_read_timeout 300s;
+EOF
+
+    # Verify Nginx configuration syntax
+    if nginx -t 2>/dev/null; then
+        systemctl enable --now nginx 2>/dev/null || true
+        systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
+        success "Nginx active with Brotli & buffer optimizations."
+    else
+        # If brotli directives fail because module is not available, strip brotli lines
+        sed -i -E '/brotli/d' /etc/nginx/conf.d/00-openship-tuning.conf 2>/dev/null || true
+        systemctl enable --now nginx 2>/dev/null || true
+        systemctl restart nginx 2>/dev/null || true
+        success "Nginx active with Gzip & buffer optimizations."
+    fi
+
+    # Start and enable MariaDB and Redis
+    systemctl enable --now mariadb 2>/dev/null || true
+    systemctl enable --now redis-server 2>/dev/null || true
+    success "MariaDB and Redis services enabled and running."
+
+    # Start and enable PHP-FPM
+    local php_sock
+    php_sock="$(find /run/php/ -name 'php*-fpm.sock' 2>/dev/null | head -n1 || true)"
+    if [[ -n "$php_sock" ]]; then
+        success "PHP-FPM active: ${php_sock}"
+    fi
+
+    # Ensure UFW ports 80 and 443 are allowed
+    if command_exists ufw; then
+        ufw allow 80/tcp comment "Web HTTP (Nginx)" >/dev/null 2>&1 || true
+        ufw allow 443/tcp comment "Web HTTPS (Nginx)" >/dev/null 2>&1 || true
+        ufw allow 443/udp comment "Web HTTPS HTTP/3 QUIC (Nginx)" >/dev/null 2>&1 || true
+    fi
+
+    # Install / link site-cli
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local site_cli_src="${script_dir}/../site-manager.sh"
+
+    if [[ -f "$site_cli_src" ]]; then
+        chmod +x "$site_cli_src"
+        ln -sf "$site_cli_src" /usr/local/bin/site-cli
+        success "CLI management tool installed: /usr/local/bin/site-cli -> ${site_cli_src}"
+    else
+        # Fallback to direct curl if run standalone via pipe
+        log "Downloading site-cli to /usr/local/bin/site-cli..."
+        if curl -fsSL "https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/services/site-manager.sh" -o /usr/local/bin/site-cli 2>/dev/null; then
+            chmod +x /usr/local/bin/site-cli
+            success "CLI management tool installed: /usr/local/bin/site-cli"
+        else
+            warn "Could not link site-cli automatically. You can install it manually from services/site-manager.sh."
+        fi
+    fi
+
+    STACK_INSTALLED=true
+}
+
+offer_and_install_stack() {
+    if [[ "$SKIP_STACK" == "true" ]]; then
+        log "Stack installation skipped (--skip-stack)."
+        return 0
+    fi
+
+    local do_install=false
+    if [[ "$INSTALL_STACK" == "true" ]]; then
+        do_install=true
+    elif [[ "$NON_INTERACTIVE" == "true" ]]; then
+        do_install=false
+    else
+        echo
+        echo -e "  ${BOLD}${CYAN}Would you like to install the Web & Database Stack now?${NC}"
+        echo -e "  Includes: ${BOLD}Nginx (with Brotli, headers-more & buffer tuning), MariaDB, Redis, PHP-FPM, and site-cli${NC}"
+        read -r -p "  Install stack? [Y/n] " response
+        case "$response" in
+            [nN][oO]|[nN])
+                do_install=false
+                ;;
+            *)
+                do_install=true
+                ;;
+        esac
+    fi
+
+    if [[ "$do_install" == "true" ]]; then
+        install_web_db_stack
+    else
+        log "Stack installation skipped. You can install anytime later with: sudo ./tune.sh --install-stack"
+    fi
+}
+
+offer_and_install_stack
+
+# ------------------------------------------------------------------------------
 # Completion Summary
 # ------------------------------------------------------------------------------
 
@@ -1458,9 +1754,21 @@ fi
 if [[ "$ENABLE_FAIL2BAN" == "true" ]]; then
     echo "  • Fail2ban:          protecting SSH on port ${SSH_PORT_INPUT}"
 fi
+if [[ "$STACK_INSTALLED" == "true" ]]; then
+    echo "  • Nginx:             active with Brotli & buffer optimizations (:80, :443)"
+    echo "  • MariaDB:           active (127.0.0.1:3306 / local socket)"
+    echo "  • Redis:             active (127.0.0.1:6379)"
+    echo "  • site-cli:          installed (/usr/local/bin/site-cli)"
+fi
 echo
 echo "Next steps for this Worker VPS:"
-echo "  1. Install Docker Engine / Compose v2 (if not already installed)."
-echo "  2. Connect this worker to OpenShip Control Plane (or deploy Edge)."
-echo "  3. Deploy databases: cd ../mariadb-redis && sudo ./deploy.sh"
+if [[ "$STACK_INSTALLED" == "true" ]]; then
+    echo "  • Manage websites:   site-cli create my-shop.com --template opencart --ssl"
+    echo "  • List websites:     site-cli list"
+    echo "  • Manage databases:  site-cli db my-shop.com [create|dump|drop]"
+else
+    echo "  1. Install Web/DB stack: sudo ./tune.sh --install-stack"
+    echo "  2. Or deploy Docker services: cd ../mariadb-redis && sudo ./deploy.sh"
+    echo "  3. Connect this worker to OpenShip Control Plane (or deploy Edge)."
+fi
 echo
