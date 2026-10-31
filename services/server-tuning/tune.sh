@@ -1539,6 +1539,11 @@ configure_worker_ufw() {
         sed -i -E 's/^DEFAULT_FORWARD_POLICY=.*/DEFAULT_FORWARD_POLICY="ACCEPT"/' /etc/default/ufw 2>/dev/null || true
     fi
 
+    # Allow inter-bridge routing to OpenShip shared services (172.20.0.0/16)
+    if [[ -f /etc/ufw/after.rules ]] && ! grep -q "OpenShip inter-bridge routing" /etc/ufw/after.rules 2>/dev/null; then
+        sed -i "/^COMMIT/i # OpenShip inter-bridge routing\n-A ufw-after-forward -d 172.20.0.0/16 -j ACCEPT\n-A ufw-after-forward -s 172.20.0.0/16 -j ACCEPT\n" /etc/ufw/after.rules 2>/dev/null || true
+    fi
+
     # Ensure internal databases are not exposed externally
     ufw delete allow 3306/tcp >/dev/null 2>&1 || true
     ufw delete allow 3306 >/dev/null 2>&1 || true

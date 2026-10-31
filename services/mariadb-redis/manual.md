@@ -22,8 +22,8 @@
 
 ### 2.1. MariaDB 11.4 LTS
 
-- **Имя контейнера**: `openship-openship-deploy-mariadb`
-- **Основная сеть**: `openship-openship-deploy` (подсеть `172.18.0.0/16`, IP: `172.18.0.2`)
+- **Имя контейнера**: `mariadb`
+- **Основная сеть**: `openship-mariadb` (подсеть `172.20.0.0/16`, статический IP: `172.20.0.10`)
 - **Внутренний порт**: `3306`
 - **Сетевой алиас (DNS)**: `mariadb`
 - **Том (Volume)**: `mariadb_data:/var/lib/mysql`
@@ -32,7 +32,7 @@
 - **Параметры запуска**:
   ```text
   --default-storage-engine=InnoDB
-  --innodb-buffer-pool-size=192M
+  --innodb-buffer-pool-size=256M
   --innodb-buffer-pool-instances=1
   --innodb-flush-log-at-trx-commit=2
   --innodb-flush-method=O_DIRECT
@@ -52,12 +52,12 @@
 - **Имя БД**: `noire`
 - **Пользователь**: `noire`
 - **Пароль**: `<NOIRE_DB_PASSWORD>`
-- **Привилегии**: `ALL PRIVILEGES ON \`noire\`.\* TO 'noire'@'%'`
+- **Привилегии**: `ALL PRIVILEGES ON \`noire\`.* TO 'noire'@'%'`
 
 ### 2.2. Redis 7.4-alpine
 
-- **Имя контейнера**: `openship-openship-deploy-redis`
-- **Основная сеть**: `openship-openship-deploy` (подсеть `172.18.0.0/16`, IP: `172.18.0.3`)
+- **Имя контейнера**: `redis`
+- **Основная сеть**: `openship-mariadb` (подсеть `172.20.0.0/16`, статический IP: `172.20.0.11`)
 - **Внутренний порт**: `6379`
 - **Сетевой алиас (DNS)**: `redis`
 - **Том (Volume)**: `redis_data:/data`
@@ -214,7 +214,10 @@ if [[ -z "$TARGET_CONTAINER" ]]; then
     exit 1
 fi
 
-echo "==> Connecting '${TARGET_CONTAINER}' to '${INFRA_NET}'..."
+# Примечание: Благодаря службе openship-network-attacher.service
+# все контейнеры 'openship-*' подключаются к сети openship автоматически при создании!
+# Ручной docker network connect оставлен как резервный вариант:
+echo "==> Checking '${TARGET_CONTAINER}' in '${INFRA_NET}'..."
 if ! docker inspect "$TARGET_CONTAINER" --format '{{json .NetworkSettings.Networks}}' | grep -q "$INFRA_NET"; then
     docker network connect "$INFRA_NET" "$TARGET_CONTAINER"
     docker restart "$TARGET_CONTAINER"

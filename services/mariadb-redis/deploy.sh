@@ -5,8 +5,8 @@
 # ==============================================================================
 #
 # Idempotent deployer for production MariaDB 11.4 LTS, Redis 7.4, and phpMyAdmin
-# configured with low memory footprint on 2GB VPS nodes and connected via
-# the shared 'openship' Docker network with internal DNS resolution.
+# configured with static IPs on the shared 'openship' Docker network (172.20.0.0/16),
+# inter-bridge kernel routing, and auto-attacher service for automatic container DNS.
 #
 # ==============================================================================
 
@@ -18,19 +18,18 @@ ENV_FILE="${SCRIPT_DIR}/.env"
 ENV_EXAMPLE="${SCRIPT_DIR}/.env.example"
 
 # ANSI Colors
-RED='[0;31m'
-GREEN='[0;32m'
-YELLOW='[1;33m'
-BLUE='[0;34m'
-BOLD='[1m'
-NC='[0m' # No Color
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
 
 log()     { echo -e "${BLUE}[INFO]${NC} $*"; }
 success() { echo -e "${GREEN}[OK]${NC} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
-section() { echo -e "
-${BOLD}=== $* ===${NC}"; }
+section() { echo -e "\n${BOLD}=== $* ===${NC}"; }
 
 require_root_or_docker() {
     if ! command -v docker &>/dev/null; then
@@ -38,7 +37,7 @@ require_root_or_docker() {
         exit 1
     fi
 
-    if [[ $EUID -ne 0 ]] && ! groups | grep -q 'docker'; then
+    if [[ $EUID -ne 0 ]] && ! groups | grep -q ' docker '; then
         error "Permission denied. Run with sudo or add your user to the 'docker' group."
         exit 1
     fi
@@ -52,13 +51,118 @@ ensure_docker_and_compose() {
 }
 
 ensure_docker_network() {
-    local net_name="${OPENSHIP_NETWORK:-shared-backend}"
+    local net_name="${OPENSHIP_NETWORK:-openship-mariadb}"
+    local subnet="${OPENSHIP_SUBNET:-172.20.0.0/16}"
+    local gateway="${OPENSHIP_GATEWAY:-172.20.0.1}"
+
     if ! docker network inspect "$net_name" &>/dev/null; then
-        log "Creating shared user-defined Docker network '${net_name}'..."
-        docker network create             --driver bridge             --opt "com.docker.network.bridge.enable_icc=true"             "$net_name"
-        success "Network '${net_name}' created (internal Docker DNS active)."
+        log "Creating shared user-defined Docker network '${net_name}' (${subnet}, gw: ${gateway})..."
+        docker network create \
+            --driver bridge \
+            --subnet "$subnet" \
+            --gateway "$gateway" \
+            --opt "com.docker.network.bridge.enable_icc=true" \
+            "$net_name"
+        success "Network '${net_name}' created (internal Docker DNS & static IP active)."
     else
-        log "Using existing Docker network '${net_name}'."
+        local existing_subnet
+        existing_subnet="$(docker network inspect "$net_name" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null || true)"
+        if [[ -n "$existing_subnet" && "$existing_subnet" != "$subnet" ]]; then
+            local attached_count
+            attached_count="$(docker network inspect "$net_name" --format '{{len .Containers}}' 2>/dev/null || echo 0)"
+            if (( attached_count == 0 )); then
+                log "Re-creating empty network '${net_name}' with required subnet ${subnet}..."
+                docker network rm "$net_name" >/dev/null 2>&1 || true
+                docker network create \
+                    --driver bridge \
+                    --subnet "$subnet" \
+                    --gateway "$gateway" \
+                    --opt "com.docker.network.bridge.enable_icc=true" \
+                    "$net_name"
+                success "Network '${net_name}' re-created with subnet ${subnet}."
+            else
+                warn "Network '${net_name}' has subnet '${existing_subnet}' with active containers. Keeping network."
+            fi
+        else
+            log "Using existing Docker network '${net_name}' (${subnet})."
+        fi
+    fi
+}
+
+ensure_inter_bridge_routing() {
+    local subnet="${OPENSHIP_SUBNET:-172.20.0.0/16}"
+    log "Configuring inter-bridge firewall routing for ${subnet}..."
+
+    if command -v iptables &>/dev/null; then
+        if ! iptables -C FORWARD -d "$subnet" -j ACCEPT 2>/dev/null; then
+            iptables -I FORWARD 1 -d "$subnet" -j ACCEPT 2>/dev/null || true
+        fi
+        if ! iptables -C FORWARD -s "$subnet" -j ACCEPT 2>/dev/null; then
+            iptables -I FORWARD 2 -s "$subnet" -j ACCEPT 2>/dev/null || true
+        fi
+    fi
+
+    # Persist in UFW /etc/ufw/after.rules if UFW is configured
+    if [[ -f /etc/ufw/after.rules ]]; then
+        if ! grep -q "OpenShip inter-bridge routing" /etc/ufw/after.rules 2>/dev/null; then
+            log "Persisting inter-bridge routing in /etc/ufw/after.rules..."
+            sed -i "/^COMMIT/i # OpenShip inter-bridge routing\n-A ufw-after-forward -d ${subnet} -j ACCEPT\n-A ufw-after-forward -s ${subnet} -j ACCEPT\n" /etc/ufw/after.rules 2>/dev/null || true
+            if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+                ufw reload >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
+    success "Inter-bridge routing active for ${subnet}."
+}
+
+ensure_auto_attacher_service() {
+    local net_name="${OPENSHIP_NETWORK:-openship-mariadb}"
+    local attacher_src="${SCRIPT_DIR}/openship-network-attacher.sh"
+    local attacher_bin="/usr/local/bin/openship-network-attacher"
+    local unit_file="/etc/systemd/system/openship-network-attacher.service"
+
+    section "Configuring OpenShip Network Auto-Attacher"
+
+    if [[ ! -f "$attacher_src" ]]; then
+        warn "Source script not found at ${attacher_src}. Skipping auto-attacher service setup."
+        return 0
+    fi
+
+    if [[ $EUID -eq 0 ]]; then
+        cp -f "$attacher_src" "$attacher_bin"
+        chmod +x "$attacher_bin"
+
+        cat > "$unit_file" <<EOF
+[Unit]
+Description=OpenShip Shared Network Auto-Attacher
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+Environment="OPENSHIP_NETWORK=${net_name}"
+ExecStart=${attacher_bin}
+Restart=always
+RestartSec=3s
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+        if command -v systemctl &>/dev/null && [[ -d /run/systemd/system ]]; then
+            systemctl daemon-reload
+            systemctl enable --now openship-network-attacher.service >/dev/null 2>&1 || true
+            if systemctl is-active --quiet openship-network-attacher.service; then
+                success "Auto-attacher active: containers with name 'openship-*' will automatically join '${net_name}'."
+            else
+                warn "Auto-attacher service created but not running. Check: systemctl status openship-network-attacher.service"
+            fi
+        else
+            log "systemd not available; auto-attacher binary installed to ${attacher_bin}."
+        fi
+    else
+        warn "Root permissions required to install systemd auto-attacher service (run with sudo to enable)."
     fi
 }
 
@@ -96,6 +200,7 @@ configure_environment() {
 
     # Read current values if present
     local maria_pass redis_pass maria_ver redis_ver maria_pool pma_ver pma_port pma_limit redis_policy net_name enable_pma
+    local net_subnet net_gw maria_ip redis_ip pma_ip
     maria_ver="$(grep -E '^MARIADB_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '11.4')"
     redis_ver="$(grep -E '^REDIS_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '7.4-alpine')"
     maria_pass="$(grep -E '^MARIADB_ROOT_PASSWORD=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || true)"
@@ -106,7 +211,12 @@ configure_environment() {
     pma_port="$(grep -E '^PHPMYADMIN_PORT=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '20003')"
     pma_limit="$(grep -E '^PHPMYADMIN_MEMORY_LIMIT=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '256M')"
     redis_policy="$(grep -E '^REDIS_MAXMEMORY_POLICY=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'noeviction')"
-    net_name="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'shared-backend')"
+    net_name="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'openship-mariadb')"
+    net_subnet="$(grep -E '^OPENSHIP_SUBNET=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.0/16')"
+    net_gw="$(grep -E '^OPENSHIP_GATEWAY=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.1')"
+    maria_ip="$(grep -E '^MARIADB_STATIC_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.10')"
+    redis_ip="$(grep -E '^REDIS_STATIC_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.11')"
+    pma_ip="$(grep -E '^PHPMYADMIN_STATIC_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.12')"
     enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo "${ENABLE_PHPMYADMIN:-true}")"
 
     [[ -z "$maria_ver" ]] && maria_ver="11.4"
@@ -116,7 +226,12 @@ configure_environment() {
     [[ -z "$pma_port" ]] && pma_port="20003"
     [[ -z "$pma_limit" ]] && pma_limit="256M"
     [[ -z "$redis_policy" ]] && redis_policy="noeviction"
-    [[ -z "$net_name" ]] && net_name="shared-backend"
+    [[ -z "$net_name" ]] && net_name="openship-mariadb"
+    [[ -z "$net_subnet" ]] && net_subnet="172.20.0.0/16"
+    [[ -z "$net_gw" ]] && net_gw="172.20.0.1"
+    [[ -z "$maria_ip" ]] && maria_ip="172.20.0.10"
+    [[ -z "$redis_ip" ]] && redis_ip="172.20.0.11"
+    [[ -z "$pma_ip" ]] && pma_ip="172.20.0.12"
 
     # Resolve phpMyAdmin toggle (CLI flag > ENV var > existing .env > default true)
     if [[ -n "$cli_pma" ]]; then
@@ -190,6 +305,11 @@ PHPMYADMIN_UPLOAD_LIMIT=512M
 PHPMYADMIN_MEMORY_LIMIT=${pma_limit}
 
 OPENSHIP_NETWORK=${net_name}
+OPENSHIP_SUBNET=${net_subnet}
+OPENSHIP_GATEWAY=${net_gw}
+MARIADB_STATIC_IP=${maria_ip}
+REDIS_STATIC_IP=${redis_ip}
+PHPMYADMIN_STATIC_IP=${pma_ip}
 EOF
 
     chmod 600 "$ENV_FILE"
@@ -201,6 +321,8 @@ start_services() {
     enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'true')"
 
     ensure_docker_network
+    ensure_inter_bridge_routing
+    ensure_auto_attacher_service
 
     if [[ "$enable_pma" == "true" ]]; then
         section "Deploying MariaDB, Redis and phpMyAdmin containers"
@@ -248,8 +370,8 @@ start_services() {
     echo
 
     local net
-    net="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'shared-backend')"
-    [[ -z "$net" ]] && net="shared-backend"
+    net="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'openship-mariadb')"
+    [[ -z "$net" ]] && net="openship-mariadb"
 
     if [[ "$healthy" == "true" ]]; then
         if [[ "$enable_pma" == "true" ]]; then
@@ -270,6 +392,9 @@ start_services() {
 stop_services() {
     section "Stopping services"
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down
+    if command -v systemctl &>/dev/null && systemctl is-active --quiet openship-network-attacher.service 2>/dev/null; then
+        systemctl stop openship-network-attacher.service 2>/dev/null || true
+    fi
     success "Services stopped. (Data volumes preserved)"
 }
 
@@ -277,6 +402,10 @@ restart_services() {
     section "Restarting services"
     local enable_pma
     enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'true')"
+    ensure_docker_network
+    ensure_inter_bridge_routing
+    ensure_auto_attacher_service
+
     if [[ "$enable_pma" == "true" ]]; then
         docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" restart
     else
@@ -306,11 +435,19 @@ show_status() {
     docker ps -a --filter "name=mariadb" --filter "name=redis" --filter "name=phpmyadmin" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.Networks}}"
 
     local net
-    net="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'shared-backend')"
-    [[ -z "$net" ]] && net="shared-backend"
+    net="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'openship-mariadb')"
+    [[ -z "$net" ]] && net="openship-mariadb"
     echo
     echo -e "${BOLD}Network (${net}):${NC}"
     docker network inspect "$net" --format '{{range .Containers}}{{.Name}} ({{.IPv4Address}}){{"\n"}}{{end}}' 2>/dev/null || echo "Network not found."
+
+    echo
+    echo -e "${BOLD}Auto-Attacher Service:${NC}"
+    if command -v systemctl &>/dev/null && [[ -d /run/systemd/system ]]; then
+        systemctl status openship-network-attacher.service --no-pager 2>/dev/null || echo "Service not installed or inactive."
+    else
+        echo "systemd not available in this environment."
+    fi
 
     echo
     echo -e "${BOLD}Volumes:${NC}"
@@ -322,28 +459,41 @@ follow_logs() {
 }
 
 print_summary() {
-    local pma_port pma_ip net_name enable_pma
+    local pma_port pma_ip net_name enable_pma maria_ip redis_ip
     pma_port="$(grep -E '^PHPMYADMIN_PORT=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '20003')"
     pma_ip="$(grep -E '^PHPMYADMIN_BIND_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '127.0.0.1')"
-    net_name="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'shared-backend')"
+    net_name="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'openship-mariadb')"
+    maria_ip="$(grep -E '^MARIADB_STATIC_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.10')"
+    redis_ip="$(grep -E '^REDIS_STATIC_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.11')"
     enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'true')"
 
     section "Ready! Connection Details"
 
-    echo -e "${BOLD}1. Services Access (Internal Network '${net_name}'):${NC}"
+    echo -e "${BOLD}1. Recommended Access (Auto-connected via DNS hostnames):${NC}"
     echo "------------------------------------------------------------"
     echo "MariaDB Host:          mariadb:3306"
     echo "Redis Host:            redis:6379"
+    echo "Auto-Attacher:         ACTIVE (openship-* containers auto-join '${net_name}')"
+    echo "------------------------------------------------------------"
+    echo
+    echo -e "${BOLD}2. Direct Static IP Access (Routing enabled across all Docker bridges):${NC}"
+    echo "------------------------------------------------------------"
+    echo "MariaDB IP:            ${maria_ip}:3306"
+    echo "Redis IP:              ${redis_ip}:6379"
+    echo "------------------------------------------------------------"
+    echo
+    echo -e "${BOLD}3. Web Management (phpMyAdmin):${NC}"
+    echo "------------------------------------------------------------"
     if [[ "$enable_pma" == "true" ]]; then
-        echo "phpMyAdmin Local Port: http://${pma_ip}:${pma_port} (127.0.0.1)"
-        echo "OpenShip OpenResty:    Target container 'shared-phpmyadmin:80' via Edge domain"
+        echo "Local Port:            http://${pma_ip}:${pma_port}"
+        echo "OpenShip Edge Proxy:   Target container 'phpmyadmin:80' or http://${pma_ip}:${pma_port}"
     else
         echo "phpMyAdmin:            Disabled (deploy with --with-pma to enable)"
     fi
-    echo "Credentials saved in:  ${ENV_FILE}"
+    echo "Credentials file:      ${ENV_FILE}"
     echo "------------------------------------------------------------"
     echo
-    echo -e "${BOLD}2. Project Database Provisioning:${NC}"
+    echo -e "${BOLD}4. Project Database Provisioning:${NC}"
     echo "------------------------------------------------------------"
     echo "Projects auto-provision their DB & user during deployment"
     if [[ "$enable_pma" == "true" ]]; then

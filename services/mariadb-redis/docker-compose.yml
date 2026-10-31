@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     command:
       - --default-storage-engine=InnoDB
-      - --innodb-buffer-pool-size=256M
+      - --innodb-buffer-pool-size=${MARIADB_BUFFER_POOL_SIZE:-256M}
       - --innodb-buffer-pool-instances=1
       - --innodb-flush-log-at-trx-commit=2
       - --innodb-flush-method=O_DIRECT
@@ -24,7 +24,8 @@ services:
     volumes:
       - mariadb_data:/var/lib/mysql
     networks:
-      - mariadb
+      openship:
+        ipv4_address: ${MARIADB_STATIC_IP:-172.20.0.10}
     mem_limit: 512m
     cpus: "0.50"
 
@@ -52,7 +53,8 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - mariadb
+      openship:
+        ipv4_address: ${REDIS_STATIC_IP:-172.20.0.11}
     mem_limit: 80m
     cpus: "0.25"
 
@@ -74,9 +76,10 @@ services:
       MAX_EXECUTION_TIME: 600
 
     ports:
-      - "${PHPMYADMIN_BIND_IP:-127.0.0.1}:80"
+      - "${PHPMYADMIN_BIND_IP:-127.0.0.1}:${PHPMYADMIN_PORT:-20003}:80"
     networks:
-      - mariadb
+      openship:
+        ipv4_address: ${PHPMYADMIN_STATIC_IP:-172.20.0.12}
     depends_on:
       mariadb:
         condition: service_healthy
@@ -87,6 +90,8 @@ services:
 volumes:
   mariadb_data:
   redis_data:
+
 networks:
-  mariadb:
-    name: mariadb
+  openship:
+    name: ${OPENSHIP_NETWORK:-openship-mariadb}
+    external: true
