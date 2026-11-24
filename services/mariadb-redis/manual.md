@@ -22,11 +22,11 @@
 
 ### 1.2. Публичный домен для phpMyAdmin
 
-Чтобы открыть `phpmyadmin` по публичному HTTPS-домену (например, `pma.example.com`) при полностью закрытых портах на хосте:
-1. В `docker-compose.yml` у сервиса `phpmyadmin` нет секции `ports:` — используется только `expose: ["80"]` (порт доступен внутри Docker-сети для OpenShip Edge, наружу хост-порт не открывается).
-2. В переменных окружения проекта (или при деплое в OpenShip UI) укажите `PHPMYADMIN_DOMAIN` (например, `pma.example.com`) — это задаст `PMA_ABSOLUTE_URI=https://pma.example.com/` для корректных редиректов за HTTPS-прокси.
-3. В панели OpenShip перейдите в проект инфраструктуры → **Services** → `phpmyadmin` → **Domains & Routing**, введите домен (`pma.example.com`), включите **Publicly exposed** и укажите `exposedPort: 80`.
-4. OpenShip Edge (`openship-edge`) автоматически выпустит SSL-сертификат и будет проксировать HTTPS-трафик на `phpmyadmin:80` внутри сети.
+Чтобы в UI OpenShip появилось поле ввода домена для `phpmyadmin` (а БД-порты оставались закрыты):
+1. В `docker-compose.yml` у сервиса `phpmyadmin` указан `ports: ["80"]` (без привязки внешнего порта хоста — OpenShip сканирует именно `ports:` для отображения переключателя **Public / Domain** в UI; при использовании `expose:` OpenShip помечает сервис как `Internal: No public ports detected`).
+2. В панели OpenShip перейдите в проект инфраструктуры → **Services** → `phpmyadmin` → включите публичный доступ и введите домен (например, `pma.example.com`).
+3. При необходимости укажите `PHPMYADMIN_DOMAIN` в переменных окружения (`pma.example.com`) для корректных HTTPS-редиректов (`PMA_ABSOLUTE_URI`).
+4. OpenShip Edge (`openship-edge`) автоматически выпустит SSL-сертификат и будет проксировать HTTPS-трафик на `phpmyadmin:80`.
 
 ---
 
