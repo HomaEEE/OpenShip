@@ -1,7 +1,7 @@
 {
   "$schema": "https://openship.io/openship.schema.json",
   "framework": "docker-compose",
-  "domains" :"",
+  "domains" : [],
   "composePath": "services/mariadb-redis/docker-compose.yml",
   "volumes": ["mariadb_data", "redis_data", "pma_data"],
   "env": {
