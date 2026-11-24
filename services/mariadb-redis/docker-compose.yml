@@ -53,7 +53,11 @@ services:
     cpus: "0.25"
 
     healthcheck:
-      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then redis-cli -a \"$$REDIS_PASSWORD\" ping; else redis-cli ping; fi"]
+      test:
+        [
+          "CMD-SHELL",
+          'if [ -n "$$REDIS_PASSWORD" ]; then redis-cli -a "$$REDIS_PASSWORD" ping; else redis-cli ping; fi',
+        ]
       interval: 30s
       timeout: 3s
       retries: 5
@@ -69,9 +73,6 @@ services:
       UPLOAD_LIMIT: ${PHPMYADMIN_UPLOAD_LIMIT:-512M}
       MEMORY_LIMIT: ${PHPMYADMIN_MEMORY_LIMIT:-128M}
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD:-}}
-      PMA_ABSOLUTE_URI: ${PHPMYADMIN_DOMAIN:+https://${PHPMYADMIN_DOMAIN}/}
-    expose:
-      - "80"
     volumes:
       - pma_data:/app/public
     command:
