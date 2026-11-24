@@ -1,6 +1,6 @@
 services:
   mariadb:
-    image: mariadb:11.4
+    image: mariadb:${MARIADB_VERSION:-11.4}
     container_name: mariadb
     restart: unless-stopped
     command:
@@ -13,7 +13,7 @@ services:
       - --innodb-io-capacity-max=4000
       - --performance-schema=OFF
       - --skip-name-resolve=1
-      - --max-connections=30
+      - --max-connections=${MARIADB_MAX_CONNECTIONS:-30}
       - --max-connect-errors=10000
       - --thread-cache-size=16
       - --wait-timeout=600
@@ -23,10 +23,7 @@ services:
       MARIADB_AUTO_UPGRADE: "1"
     volumes:
       - mariadb_data:/var/lib/mysql
-    networks:
-      openship:
-        ipv4_address: ${MARIADB_STATIC_IP:-172.20.0.10}
-    mem_limit: 512m
+    mem_limit: ${MARIADB_MEMORY_LIMIT:-512m}
     cpus: "0.50"
 
     healthcheck:
@@ -37,25 +34,22 @@ services:
       start_period: 60s
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:${REDIS_VERSION:-7.4-alpine}
     container_name: redis
     restart: unless-stopped
     command: >
       sh -c '
         if [ -n "$${REDIS_PASSWORD}" ]; then
-          exec redis-server --requirepass "$${REDIS_PASSWORD}" --maxmemory 48mb --maxmemory-policy allkeys-lru
+          exec redis-server --requirepass "$${REDIS_PASSWORD}" --maxmemory ${REDIS_MAXMEMORY:-48mb} --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
         else
-          exec redis-server --maxmemory 48mb --maxmemory-policy allkeys-lru
+          exec redis-server --maxmemory ${REDIS_MAXMEMORY:-48mb} --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
         fi
       '
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     volumes:
       - redis_data:/data
-    networks:
-      openship:
-        ipv4_address: ${REDIS_STATIC_IP:-172.20.0.11}
-    mem_limit: 80m
+    mem_limit: ${REDIS_MEMORY_LIMIT:-80m}
     cpus: "0.25"
 
     healthcheck:
@@ -65,33 +59,65 @@ services:
       retries: 5
 
   phpmyadmin:
-    image: phpmyadmin:${PHPMYADMIN_VERSION:-latest}
+    image: dunglas/frankenphp:1-php${PHP_VERSION:-8.4}-bookworm
     container_name: phpmyadmin
     restart: unless-stopped
     environment:
       PMA_HOST: ${PHPMYADMIN_HOST:-mariadb}
       PMA_PORT: ${MARIADB_PORT:-3306}
+      PMA_VERSION: ${PHPMYADMIN_VERSION:-5.2.2}
       UPLOAD_LIMIT: ${PHPMYADMIN_UPLOAD_LIMIT:-512M}
       MEMORY_LIMIT: ${PHPMYADMIN_MEMORY_LIMIT:-128M}
-      MAX_EXECUTION_TIME: 600
-
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD:-}}
     ports:
-      - "${PHPMYADMIN_BIND_IP:-127.0.0.1}:${PHPMYADMIN_PORT:-20003}:80"
-    networks:
-      openship:
-        ipv4_address: ${PHPMYADMIN_STATIC_IP:-172.20.0.12}
+      - "80"
+    volumes:
+      - pma_data:/app/public
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        if ! php -m | grep -qi '^mysqli$$'; then
+          install-php-extensions mysqli
+        fi
+        if [ ! -f /app/public/index.php ]; then
+          mkdir -p /app/public
+          curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/$${PMA_VERSION}/phpMyAdmin-$${PMA_VERSION}-all-languages.tar.gz" -o /tmp/pma.tar.gz
+          tar -xzf /tmp/pma.tar.gz -C /app/public --strip-components=1
+          rm -f /tmp/pma.tar.gz
+        fi
+        cat > /app/public/config.inc.php <<'EOF'
+        <?php
+        $cfg['blowfish_secret'] = hash('sha256', getenv('MARIADB_ROOT_PASSWORD') ?: 'openship_pma_secret');
+        $i = 0;
+        $i++;
+        $cfg['Servers'][$i]['auth_type'] = 'cookie';
+        $cfg['Servers'][$i]['host'] = getenv('PMA_HOST') ?: 'mariadb';
+        $cfg['Servers'][$i]['port'] = (int)(getenv('PMA_PORT') ?: 3306);
+        $cfg['Servers'][$i]['compress'] = false;
+        $cfg['Servers'][$i]['AllowNoPassword'] = false;
+        $cfg['TempDir'] = '/tmp';
+        EOF
+        {
+          echo "upload_max_filesize = $${UPLOAD_LIMIT}"
+          echo "post_max_size = $${UPLOAD_LIMIT}"
+          echo "memory_limit = $${MEMORY_LIMIT}"
+        } > /usr/local/etc/php/conf.d/pma.ini
+        exec frankenphp php-server --listen :80 --root /app/public
     depends_on:
       mariadb:
         condition: service_healthy
-
-    mem_limit: 128m
+    mem_limit: ${PHPMYADMIN_MEMORY_LIMIT:-128m}
     cpus: "0.50"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:80/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
 
 volumes:
   mariadb_data:
   redis_data:
-
-networks:
-  openship:
-    name: ${OPENSHIP_NETWORK:-openship-mariadb}
-    external: true
+  pma_data:

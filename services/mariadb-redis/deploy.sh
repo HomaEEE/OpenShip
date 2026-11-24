@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# OpenShip Shared Infrastructure Deployment Script (MariaDB + Redis + phpMyAdmin)
+# OpenShip Shared Infrastructure Deployment Script (MariaDB + Redis + PMA)
 # ==============================================================================
 #
-# Idempotent deployer for production MariaDB 11.4 LTS, Redis 7.4, and phpMyAdmin
-# configured with static IPs on the shared 'openship' Docker network (172.20.0.0/16),
-# inter-bridge kernel routing, and auto-attacher service for automatic container DNS.
+# Idempotent deployer for MariaDB 11.4 LTS, Redis 7.4, and phpMyAdmin running on
+# the shared FrankenPHP (PHP 8.4+) runtime. Database ports stay closed to the
+# host; services communicate via Docker DNS aliases ('mariadb', 'redis', 'phpmyadmin').
 #
 # ==============================================================================
 
@@ -37,7 +37,7 @@ require_root_or_docker() {
         exit 1
     fi
 
-    if [[ $EUID -ne 0 ]] && ! groups | grep -q ' docker '; then
+    if [[ $EUID -ne 0 ]] && ! groups | grep -qE '(^| )docker( |$)'; then
         error "Permission denied. Run with sudo or add your user to the 'docker' group."
         exit 1
     fi
@@ -47,122 +47,6 @@ ensure_docker_and_compose() {
     if ! docker compose version &>/dev/null; then
         error "Docker Compose v2 plugin is required ('docker compose')."
         exit 1
-    fi
-}
-
-ensure_docker_network() {
-    local net_name="${OPENSHIP_NETWORK:-openship-mariadb}"
-    local subnet="${OPENSHIP_SUBNET:-172.20.0.0/16}"
-    local gateway="${OPENSHIP_GATEWAY:-172.20.0.1}"
-
-    if ! docker network inspect "$net_name" &>/dev/null; then
-        log "Creating shared user-defined Docker network '${net_name}' (${subnet}, gw: ${gateway})..."
-        docker network create \
-            --driver bridge \
-            --subnet "$subnet" \
-            --gateway "$gateway" \
-            --opt "com.docker.network.bridge.enable_icc=true" \
-            "$net_name"
-        success "Network '${net_name}' created (internal Docker DNS & static IP active)."
-    else
-        local existing_subnet
-        existing_subnet="$(docker network inspect "$net_name" --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null || true)"
-        if [[ -n "$existing_subnet" && "$existing_subnet" != "$subnet" ]]; then
-            local attached_count
-            attached_count="$(docker network inspect "$net_name" --format '{{len .Containers}}' 2>/dev/null || echo 0)"
-            if (( attached_count == 0 )); then
-                log "Re-creating empty network '${net_name}' with required subnet ${subnet}..."
-                docker network rm "$net_name" >/dev/null 2>&1 || true
-                docker network create \
-                    --driver bridge \
-                    --subnet "$subnet" \
-                    --gateway "$gateway" \
-                    --opt "com.docker.network.bridge.enable_icc=true" \
-                    "$net_name"
-                success "Network '${net_name}' re-created with subnet ${subnet}."
-            else
-                warn "Network '${net_name}' has subnet '${existing_subnet}' with active containers. Keeping network."
-            fi
-        else
-            log "Using existing Docker network '${net_name}' (${subnet})."
-        fi
-    fi
-}
-
-ensure_inter_bridge_routing() {
-    local subnet="${OPENSHIP_SUBNET:-172.20.0.0/16}"
-    log "Configuring inter-bridge firewall routing for ${subnet}..."
-
-    if command -v iptables &>/dev/null; then
-        if ! iptables -C FORWARD -d "$subnet" -j ACCEPT 2>/dev/null; then
-            iptables -I FORWARD 1 -d "$subnet" -j ACCEPT 2>/dev/null || true
-        fi
-        if ! iptables -C FORWARD -s "$subnet" -j ACCEPT 2>/dev/null; then
-            iptables -I FORWARD 2 -s "$subnet" -j ACCEPT 2>/dev/null || true
-        fi
-    fi
-
-    # Persist in UFW /etc/ufw/after.rules if UFW is configured
-    if [[ -f /etc/ufw/after.rules ]]; then
-        if ! grep -q "OpenShip inter-bridge routing" /etc/ufw/after.rules 2>/dev/null; then
-            log "Persisting inter-bridge routing in /etc/ufw/after.rules..."
-            sed -i "/^COMMIT/i # OpenShip inter-bridge routing\n-A ufw-after-forward -d ${subnet} -j ACCEPT\n-A ufw-after-forward -s ${subnet} -j ACCEPT\n" /etc/ufw/after.rules 2>/dev/null || true
-            if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
-                ufw reload >/dev/null 2>&1 || true
-            fi
-        fi
-    fi
-    success "Inter-bridge routing active for ${subnet}."
-}
-
-ensure_auto_attacher_service() {
-    local net_name="${OPENSHIP_NETWORK:-openship-mariadb}"
-    local attacher_src="${SCRIPT_DIR}/openship-network-attacher.sh"
-    local attacher_bin="/usr/local/bin/openship-network-attacher"
-    local unit_file="/etc/systemd/system/openship-network-attacher.service"
-
-    section "Configuring OpenShip Network Auto-Attacher"
-
-    if [[ ! -f "$attacher_src" ]]; then
-        warn "Source script not found at ${attacher_src}. Skipping auto-attacher service setup."
-        return 0
-    fi
-
-    if [[ $EUID -eq 0 ]]; then
-        cp -f "$attacher_src" "$attacher_bin"
-        chmod +x "$attacher_bin"
-
-        cat > "$unit_file" <<EOF
-[Unit]
-Description=OpenShip Shared Network Auto-Attacher
-After=docker.service
-Requires=docker.service
-
-[Service]
-Type=simple
-Environment="OPENSHIP_NETWORK=${net_name}"
-ExecStart=${attacher_bin}
-Restart=always
-RestartSec=3s
-KillMode=process
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-        if command -v systemctl &>/dev/null && [[ -d /run/systemd/system ]]; then
-            systemctl daemon-reload
-            systemctl enable --now openship-network-attacher.service >/dev/null 2>&1 || true
-            if systemctl is-active --quiet openship-network-attacher.service; then
-                success "Auto-attacher active: containers with name 'openship-*' will automatically join '${net_name}'."
-            else
-                warn "Auto-attacher service created but not running. Check: systemctl status openship-network-attacher.service"
-            fi
-        else
-            log "systemd not available; auto-attacher binary installed to ${attacher_bin}."
-        fi
-    else
-        warn "Root permissions required to install systemd auto-attacher service (run with sudo to enable)."
     fi
 }
 
@@ -192,59 +76,38 @@ configure_environment() {
 
     tune_mariadb_buffer_pool
 
-    if [[ ! -f "$ENV_FILE" ]]; then
-        if [[ -f "$ENV_EXAMPLE" ]]; then
-            cp "$ENV_EXAMPLE" "$ENV_FILE"
-        fi
+    if [[ ! -f "$ENV_FILE" && -f "$ENV_EXAMPLE" ]]; then
+        cp "$ENV_EXAMPLE" "$ENV_FILE"
     fi
 
-    # Read current values if present
-    local maria_pass redis_pass maria_ver redis_ver maria_pool pma_ver pma_port pma_limit redis_policy net_name enable_pma
-    local net_subnet net_gw maria_ip redis_ip pma_ip
+    local maria_pass redis_pass maria_ver redis_ver maria_pool php_ver pma_ver pma_limit redis_policy enable_pma
     maria_ver="$(grep -E '^MARIADB_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '11.4')"
     redis_ver="$(grep -E '^REDIS_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '7.4-alpine')"
     maria_pass="$(grep -E '^MARIADB_ROOT_PASSWORD=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || true)"
     [[ -z "$maria_pass" ]] && maria_pass="$(grep -E '^DB_ROOT_PASSWORD=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || true)"
     redis_pass="$(grep -E '^REDIS_PASSWORD=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || true)"
     maria_pool="$(grep -E '^MARIADB_BUFFER_POOL_SIZE=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo "${MARIADB_BUFFER_POOL_SIZE}")"
-    pma_ver="$(grep -E '^PHPMYADMIN_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'latest')"
-    pma_port="$(grep -E '^PHPMYADMIN_PORT=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '20003')"
-    pma_limit="$(grep -E '^PHPMYADMIN_MEMORY_LIMIT=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '256M')"
-    redis_policy="$(grep -E '^REDIS_MAXMEMORY_POLICY=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'noeviction')"
-    net_name="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'openship-mariadb')"
-    net_subnet="$(grep -E '^OPENSHIP_SUBNET=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.0/16')"
-    net_gw="$(grep -E '^OPENSHIP_GATEWAY=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.1')"
-    maria_ip="$(grep -E '^MARIADB_STATIC_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.10')"
-    redis_ip="$(grep -E '^REDIS_STATIC_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.11')"
-    pma_ip="$(grep -E '^PHPMYADMIN_STATIC_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.12')"
+    php_ver="$(grep -E '^PHP_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '8.4')"
+    pma_ver="$(grep -E '^PHPMYADMIN_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '5.2.2')"
+    pma_limit="$(grep -E '^PHPMYADMIN_MEMORY_LIMIT=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '128M')"
+    redis_policy="$(grep -E '^REDIS_MAXMEMORY_POLICY=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'allkeys-lru')"
     enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo "${ENABLE_PHPMYADMIN:-true}")"
 
     [[ -z "$maria_ver" ]] && maria_ver="11.4"
     [[ -z "$redis_ver" ]] && redis_ver="7.4-alpine"
     [[ -z "$maria_pool" ]] && maria_pool="${MARIADB_BUFFER_POOL_SIZE}"
-    [[ -z "$pma_ver" ]] && pma_ver="latest"
-    [[ -z "$pma_port" ]] && pma_port="20003"
-    [[ -z "$pma_limit" ]] && pma_limit="256M"
-    [[ -z "$redis_policy" ]] && redis_policy="noeviction"
-    [[ -z "$net_name" ]] && net_name="openship-mariadb"
-    [[ -z "$net_subnet" ]] && net_subnet="172.20.0.0/16"
-    [[ -z "$net_gw" ]] && net_gw="172.20.0.1"
-    [[ -z "$maria_ip" ]] && maria_ip="172.20.0.10"
-    [[ -z "$redis_ip" ]] && redis_ip="172.20.0.11"
-    [[ -z "$pma_ip" ]] && pma_ip="172.20.0.12"
+    [[ -z "$php_ver" ]] && php_ver="8.4"
+    [[ -z "$pma_ver" || "$pma_ver" == "latest" ]] && pma_ver="5.2.2"
+    [[ -z "$pma_limit" ]] && pma_limit="128M"
+    [[ -z "$redis_policy" ]] && redis_policy="allkeys-lru"
 
-    # Resolve phpMyAdmin toggle (CLI flag > ENV var > existing .env > default true)
     if [[ -n "$cli_pma" ]]; then
         enable_pma="$cli_pma"
     elif [[ -n "${ENABLE_PHPMYADMIN:-}" ]]; then
         enable_pma="${ENABLE_PHPMYADMIN}"
     fi
 
-    if [[ -z "$enable_pma" ]]; then
-        enable_pma="true"
-    fi
-
-    if [[ "$enable_pma" == "true" || "$enable_pma" == "yes" || "$enable_pma" == "1" ]]; then
+    if [[ "$enable_pma" == "true" || "$enable_pma" == "yes" || "$enable_pma" == "1" || -z "$enable_pma" ]]; then
         enable_pma="true"
     else
         enable_pma="false"
@@ -255,9 +118,7 @@ configure_environment() {
             while [[ -z "$maria_pass" ]]; do
                 read -r -s -p "Enter MariaDB root password: " maria_pass
                 echo
-                if [[ -z "$maria_pass" ]]; then
-                    warn "MariaDB root password cannot be empty."
-                fi
+                [[ -z "$maria_pass" ]] && warn "MariaDB root password cannot be empty."
             done
         else
             error "MARIADB_ROOT_PASSWORD is required. Set it in ${ENV_FILE} or environment."
@@ -270,9 +131,7 @@ configure_environment() {
             while [[ -z "$redis_pass" ]]; do
                 read -r -s -p "Enter Redis password: " redis_pass
                 echo
-                if [[ -z "$redis_pass" ]]; then
-                    warn "Redis password cannot be empty."
-                fi
+                [[ -z "$redis_pass" ]] && warn "Redis password cannot be empty."
             done
         else
             error "REDIS_PASSWORD is required. Set it in ${ENV_FILE} or environment."
@@ -281,51 +140,40 @@ configure_environment() {
     fi
 
     cat > "$ENV_FILE" <<EOF
-# OpenShip Shared Services — MariaDB + Redis + phpMyAdmin
+# OpenShip Shared Services — MariaDB + Redis + phpMyAdmin (FrankenPHP)
 # Generated on: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 
 DB_ROOT_PASSWORD=${maria_pass}
 MARIADB_VERSION=${maria_ver}
 MARIADB_ROOT_PASSWORD=${maria_pass}
 MARIADB_BUFFER_POOL_SIZE=${maria_pool}
-MARIADB_MEMORY_LIMIT=1024M
+MARIADB_MAX_CONNECTIONS=30
+MARIADB_MEMORY_LIMIT=512M
 
 REDIS_VERSION=${redis_ver}
 REDIS_PASSWORD=${redis_pass}
-REDIS_MAXMEMORY=256mb
+REDIS_MAXMEMORY=48mb
 REDIS_MAXMEMORY_POLICY=${redis_policy}
-REDIS_MEMORY_LIMIT=512M
+REDIS_MEMORY_LIMIT=80M
 
+PHP_VERSION=${php_ver}
 ENABLE_PHPMYADMIN=${enable_pma}
 PHPMYADMIN_VERSION=${pma_ver}
 PHPMYADMIN_HOST=mariadb
-PHPMYADMIN_PORT=${pma_port}
-PHPMYADMIN_BIND_IP=127.0.0.1
 PHPMYADMIN_UPLOAD_LIMIT=512M
 PHPMYADMIN_MEMORY_LIMIT=${pma_limit}
-
-OPENSHIP_NETWORK=${net_name}
-OPENSHIP_SUBNET=${net_subnet}
-OPENSHIP_GATEWAY=${net_gw}
-MARIADB_STATIC_IP=${maria_ip}
-REDIS_STATIC_IP=${redis_ip}
-PHPMYADMIN_STATIC_IP=${pma_ip}
 EOF
 
     chmod 600 "$ENV_FILE"
-    success "Configuration secured in ${ENV_FILE} (phpMyAdmin enabled: ${enable_pma})"
+    success "Configuration secured in ${ENV_FILE} (PHP ${php_ver}, phpMyAdmin enabled: ${enable_pma})"
 }
 
 start_services() {
     local enable_pma
     enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'true')"
 
-    ensure_docker_network
-    ensure_inter_bridge_routing
-    ensure_auto_attacher_service
-
     if [[ "$enable_pma" == "true" ]]; then
-        section "Deploying MariaDB, Redis and phpMyAdmin containers"
+        section "Deploying MariaDB, Redis and phpMyAdmin (FrankenPHP)"
         log "Starting stack..."
         docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
     else
@@ -341,17 +189,17 @@ start_services() {
     fi
 
     log "Waiting for containers to become healthy..."
-    local max_wait=50
+    local max_wait=60
     local elapsed=0
     local healthy=false
 
     while (( elapsed < max_wait )); do
         local maria_status redis_status pma_status
-        maria_status="$(docker inspect --format='{{json .State.Health.Status}}' shared-mariadb 2>/dev/null || docker inspect --format='{{json .State.Health.Status}}' mariadb 2>/dev/null || echo '"starting"')"
-        redis_status="$(docker inspect --format='{{json .State.Health.Status}}' shared-redis 2>/dev/null || docker inspect --format='{{json .State.Health.Status}}' redis 2>/dev/null || echo '"starting"')"
+        maria_status="$(docker inspect --format='{{json .State.Health.Status}}' mariadb 2>/dev/null || echo '"starting"')"
+        redis_status="$(docker inspect --format='{{json .State.Health.Status}}' redis 2>/dev/null || echo '"starting"')"
 
         if [[ "$enable_pma" == "true" ]]; then
-            pma_status="$(docker inspect --format='{{json .State.Health.Status}}' shared-phpmyadmin 2>/dev/null || docker inspect --format='{{json .State.Health.Status}}' phpmyadmin 2>/dev/null || echo '"starting"')"
+            pma_status="$(docker inspect --format='{{json .State.Health.Status}}' phpmyadmin 2>/dev/null || echo '"starting"')"
             if [[ "$maria_status" == '"healthy"' && "$redis_status" == '"healthy"' && "$pma_status" == '"healthy"' ]]; then
                 healthy=true
                 break
@@ -369,22 +217,14 @@ start_services() {
     done
     echo
 
-    local net
-    net="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'openship-mariadb')"
-    [[ -z "$net" ]] && net="openship-mariadb"
-
     if [[ "$healthy" == "true" ]]; then
-        if [[ "$enable_pma" == "true" ]]; then
-            success "MariaDB, Redis and phpMyAdmin are healthy and running on '${net}'!"
-        else
-            success "MariaDB and Redis are healthy and running on '${net}'!"
-        fi
+        success "All selected services are healthy!"
     else
-        warn "Containers started. Checking final statuses:"
-        warn "MariaDB:    $(docker inspect --format='{{json .State.Health.Status}}' shared-mariadb 2>/dev/null || docker inspect --format='{{json .State.Health.Status}}' mariadb 2>/dev/null || echo 'not found')"
-        warn "Redis:      $(docker inspect --format='{{json .State.Health.Status}}' shared-redis 2>/dev/null || docker inspect --format='{{json .State.Health.Status}}' redis 2>/dev/null || echo 'not found')"
+        warn "Containers started. Current health statuses:"
+        warn "MariaDB:    $(docker inspect --format='{{json .State.Health.Status}}' mariadb 2>/dev/null || echo 'not found')"
+        warn "Redis:      $(docker inspect --format='{{json .State.Health.Status}}' redis 2>/dev/null || echo 'not found')"
         if [[ "$enable_pma" == "true" ]]; then
-            warn "phpMyAdmin: $(docker inspect --format='{{json .State.Health.Status}}' shared-phpmyadmin 2>/dev/null || docker inspect --format='{{json .State.Health.Status}}' phpmyadmin 2>/dev/null || echo 'not found')"
+            warn "phpMyAdmin: $(docker inspect --format='{{json .State.Health.Status}}' phpmyadmin 2>/dev/null || echo 'not found')"
         fi
     fi
 }
@@ -392,9 +232,6 @@ start_services() {
 stop_services() {
     section "Stopping services"
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down
-    if command -v systemctl &>/dev/null && systemctl is-active --quiet openship-network-attacher.service 2>/dev/null; then
-        systemctl stop openship-network-attacher.service 2>/dev/null || true
-    fi
     success "Services stopped. (Data volumes preserved)"
 }
 
@@ -402,10 +239,6 @@ restart_services() {
     section "Restarting services"
     local enable_pma
     enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'true')"
-    ensure_docker_network
-    ensure_inter_bridge_routing
-    ensure_auto_attacher_service
-
     if [[ "$enable_pma" == "true" ]]; then
         docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" restart
     else
@@ -434,24 +267,9 @@ show_status() {
     echo -e "${BOLD}Containers:${NC}"
     docker ps -a --filter "name=mariadb" --filter "name=redis" --filter "name=phpmyadmin" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.Networks}}"
 
-    local net
-    net="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'openship-mariadb')"
-    [[ -z "$net" ]] && net="openship-mariadb"
-    echo
-    echo -e "${BOLD}Network (${net}):${NC}"
-    docker network inspect "$net" --format '{{range .Containers}}{{.Name}} ({{.IPv4Address}}){{"\n"}}{{end}}' 2>/dev/null || echo "Network not found."
-
-    echo
-    echo -e "${BOLD}Auto-Attacher Service:${NC}"
-    if command -v systemctl &>/dev/null && [[ -d /run/systemd/system ]]; then
-        systemctl status openship-network-attacher.service --no-pager 2>/dev/null || echo "Service not installed or inactive."
-    else
-        echo "systemd not available in this environment."
-    fi
-
     echo
     echo -e "${BOLD}Volumes:${NC}"
-    docker volume ls --filter "name=mariadb_data" --filter "name=redis_data"
+    docker volume ls --filter "name=mariadb_data" --filter "name=redis_data" --filter "name=pma_data"
 }
 
 follow_logs() {
@@ -459,48 +277,27 @@ follow_logs() {
 }
 
 print_summary() {
-    local pma_port pma_ip net_name enable_pma maria_ip redis_ip
-    pma_port="$(grep -E '^PHPMYADMIN_PORT=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '20003')"
-    pma_ip="$(grep -E '^PHPMYADMIN_BIND_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '127.0.0.1')"
-    net_name="$(grep -E '^OPENSHIP_NETWORK=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'openship-mariadb')"
-    maria_ip="$(grep -E '^MARIADB_STATIC_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.10')"
-    redis_ip="$(grep -E '^REDIS_STATIC_IP=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '172.20.0.11')"
+    local enable_pma php_ver
     enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'true')"
+    php_ver="$(grep -E '^PHP_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '8.4')"
 
     section "Ready! Connection Details"
 
-    echo -e "${BOLD}1. Recommended Access (Auto-connected via DNS hostnames):${NC}"
+    echo -e "${BOLD}1. Internal DNS Aliases (No host ports exposed):${NC}"
     echo "------------------------------------------------------------"
     echo "MariaDB Host:          mariadb:3306"
     echo "Redis Host:            redis:6379"
-    echo "Auto-Attacher:         ACTIVE (openship-* containers auto-join '${net_name}')"
     echo "------------------------------------------------------------"
     echo
-    echo -e "${BOLD}2. Direct Static IP Access (Routing enabled across all Docker bridges):${NC}"
-    echo "------------------------------------------------------------"
-    echo "MariaDB IP:            ${maria_ip}:3306"
-    echo "Redis IP:              ${redis_ip}:6379"
-    echo "------------------------------------------------------------"
-    echo
-    echo -e "${BOLD}3. Web Management (phpMyAdmin):${NC}"
+    echo -e "${BOLD}2. Web Management (phpMyAdmin on FrankenPHP ${php_ver}):${NC}"
     echo "------------------------------------------------------------"
     if [[ "$enable_pma" == "true" ]]; then
-        echo "Local Port:            http://${pma_ip}:${pma_port}"
-        echo "OpenShip Edge Proxy:   Target container 'phpmyadmin:80' or http://${pma_ip}:${pma_port}"
+        echo "Internal Target:       phpmyadmin:80"
+        echo "Public Domain:         Route via OpenShip Edge (exposedPort: 80)"
     else
         echo "phpMyAdmin:            Disabled (deploy with --with-pma to enable)"
     fi
     echo "Credentials file:      ${ENV_FILE}"
-    echo "------------------------------------------------------------"
-    echo
-    echo -e "${BOLD}4. Project Database Provisioning:${NC}"
-    echo "------------------------------------------------------------"
-    echo "Projects auto-provision their DB & user during deployment"
-    if [[ "$enable_pma" == "true" ]]; then
-        echo "using DB_ROOT_PASSWORD or manage tables via phpMyAdmin."
-    else
-        echo "using DB_ROOT_PASSWORD."
-    fi
     echo "------------------------------------------------------------"
 }
 
@@ -512,11 +309,11 @@ Usage:
   sudo ./deploy.sh [OPTIONS]
 
 Deployment options:
-  --with-pma, --enable-pma      Deploy phpMyAdmin for database management
+  --with-pma, --enable-pma      Deploy phpMyAdmin on shared FrankenPHP runtime
   --without-pma, --disable-pma  Deploy without phpMyAdmin
 
 Management options:
-  --status                      Display current status and health of containers
+  --status                      Display current status and volumes
   --restart                     Restart containers
   --stop                        Stop containers (volumes preserved)
   --logs                        Follow container logs in real time
@@ -525,6 +322,7 @@ Management options:
 
 Environment variables:
   ENABLE_PHPMYADMIN=true|false  Toggle phpMyAdmin installation
+  PHP_VERSION=8.4               Shared FrankenPHP version for phpMyAdmin
 EOF
 }
 

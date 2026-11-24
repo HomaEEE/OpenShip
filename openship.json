@@ -2,7 +2,7 @@
   "$schema": "https://openship.io/openship.schema.json",
   "framework": "docker-compose",
   "composePath": "services/mariadb-redis/docker-compose.yml",
-  "volumes": ["mariadb_data", "redis_data"],
+  "volumes": ["mariadb_data", "redis_data", "pma_data"],
   "env": {
     "MARIADB_ROOT_PASSWORD": {
       "value": "",
@@ -12,12 +12,12 @@
       "value": "",
       "secret": true
     },
-    "ENABLE_PHPMYADMIN": {
-      "value": "true",
+    "PHP_VERSION": {
+      "value": "8.4",
       "secret": false
     },
-    "PHPMYADMIN_PORT": {
-      "value": "20003",
+    "ENABLE_PHPMYADMIN": {
+      "value": "true",
       "secret": false
     }
   }

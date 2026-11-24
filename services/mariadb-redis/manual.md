@@ -1,429 +1,185 @@
-# Руководство по инфраструктуре OpenShip: MariaDB, Redis, PMA и деплой проектов (Noire / Hookah-CRM)
+# Руководство по пакету MariaDB + Redis + PMA на общем PHP 8.4 и деплою проектов без Dockerfile
 
-Документ фиксирует рабочую конфигурацию серверов, контейнеров и сетей на сервере **<SERVER_IP>**, учётные данные, сетевую модель OpenShip и пошаговую инструкцию для построения автоматизированного CI/CD пайплайна подключения новых проектов к MariaDB и Redis.
-
----
-
-## 1. Сведения о сервере и панели управления
-
-- **Хост сервера**: `<SERVER_IP>`
-- **ID сервера в OpenShip**: `<SERVER_ID>` (`Pool 1`)
-- **Панель управления**: OpenShip (`https://os.example.com`)
-- **Организация / Workspace**: `<WORKSPACE_ID>`
-- **Edge Proxy**: `openship-edge` (OpenResty 1.27.1, порты 80/443 на host-интерфейсе, SSL через Cloudflare / Let's Encrypt).
-- **Конфигурация vhosts**: `/var/lib/openship/edge/sites-enabled/`
+Документ описывает архитектуру и эксплуатацию общего стека баз данных (`MariaDB + Redis + phpMyAdmin`), настроенного под единый образ PHP (`dunglas/frankenphp:1-php8.4-bookworm`), доступ по DNS-алиасам без открытия портов БД наружу, а также правила развёртывания и обновления PHP в проектах OpenShip.
 
 ---
 
-## 2. Учётные данные и сервисы инфраструктуры
+## 1. Архитектура пакета `MariaDB + Redis + PMA`
 
-Проект инфраструктуры в OpenShip: **`OpenShip-deploy`** (`<PROJECT_ID>`)  
-Исходный код: `HomaEEE/OpenShip-deploy` (ветка `main`, путь `services/mariadb-redis/docker-compose.yml`)
+Конфигурация описана в [`services/mariadb-redis/docker-compose.yml`](file:///Users/arthurboyko/Sites/OpenShip-deploy/services/mariadb-redis/docker-compose.yml) и [`openship.json`](file:///Users/arthurboyko/Sites/OpenShip-deploy/openship.json).
 
-### 2.1. MariaDB 11.4 LTS
+### 1.1. Состав сервисов и закрытый периметр
 
-- **Имя контейнера**: `mariadb`
-- **Основная сеть**: `openship-mariadb` (подсеть `172.20.0.0/16`, статический IP: `172.20.0.10`)
-- **Внутренний порт**: `3306`
-- **Сетевой алиас (DNS)**: `mariadb`
-- **Том (Volume)**: `mariadb_data:/var/lib/mysql`
-- **Root пользователь**: `root`
-- **Root пароль**: `<MARIADB_ROOT_PASSWORD>`
-- **Параметры запуска**:
-  ```text
-  --default-storage-engine=InnoDB
-  --innodb-buffer-pool-size=256M
-  --innodb-buffer-pool-instances=1
-  --innodb-flush-log-at-trx-commit=2
-  --innodb-flush-method=O_DIRECT
-  --innodb-io-capacity=2000
-  --innodb-io-capacity-max=4000
-  --performance-schema=OFF
-  --skip-name-resolve=1
-  --max-connections=30
-  --max-connect-errors=10000
-  --thread-cache-size=16
-  --wait-timeout=600
-  --interactive-timeout=600
+| Сервис | Образ | Алиас (DNS) | Внешние порты на хосте | Постоянный том (Volume) | Назначение |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`mariadb`** | `mariadb:11.4` | `mariadb:3306` | **Нет** (закрыт) | `mariadb_data:/var/lib/mysql` | Основная СУБД |
+| **`redis`** | `redis:7.4-alpine` | `redis:6379` | **Нет** (закрыт) | `redis_data:/data` | Кэш, сессии, очереди |
+| **`phpmyadmin`** | `dunglas/frankenphp:1-php${PHP_VERSION:-8.4}-bookworm` | `phpmyadmin:80` | **Нет** (только `:80` для Edge) | `pma_data:/app/public` | Веб-панель БД через HTTPS-домен |
+
+- **Безопасность**: порты `3306` и `6379` не проброшены на хост (`ports:` отсутствует). Подключиться к базам можно только из контейнеров, находящихся в одной Docker-сети со стеком.
+- **Сеть проекта**: OpenShip автоматически создаёт изолированную bridge-сеть при деплое стека (например, `openship-openship-deploy`). Никаких ручных сетей с `external: true` в `docker-compose.yml` не требуется.
+- **Общий PHP-пакет для phpMyAdmin**: вместо отдельного тяжёлого Apache-образа `phpmyadmin` запускается на том же базовом образе `dunglas/frankenphp:1-php8.4-bookworm`, который OpenShip использует для всех PHP-проектов. При первом старте в том `pma_data` загружается дистрибутив phpMyAdmin и подключается расширение `mysqli`.
+
+### 1.2. Публичный домен для phpMyAdmin
+
+Чтобы открыть `phpmyadmin` по публичному HTTPS-домену (например, `pma.example.com`) при закрытых портах БД:
+1. В `docker-compose.yml` у сервиса `phpmyadmin` указан только внутренний порт контейнера: `ports: ["80"]`.
+2. В панели OpenShip перейдите в проект инфраструктуры → **Services** → `phpmyadmin` → **Domains & Routing**, привяжите домен (`pma.example.com`), включите **Publicly exposed** и укажите `exposedPort: 80`.
+3. OpenShip Edge (`openship-edge`) автоматически выпустит SSL-сертификат и будет проксировать HTTPS-трафик на `phpmyadmin:80` внутри сети.
+
+---
+
+## 2. Безопасное обновление контейнеров без потери данных
+
+Все данные лежат в именованных томах (`mariadb_data`, `redis_data`, `pma_data`). При пересборке или обновлении контейнеров тома не удаляются.
+
+### 2.1. Резервная копия перед обновлением
+
+Перед изменением версии `MARIADB_VERSION` или параметров запуска выполните дамп всех баз:
+
+```bash
+sudo ./services/mariadb-redis/backup.sh
+```
+
+Архивы сохраняются в `/var/backups/openship-services/mariadb_all_<TIMESTAMP>.sql.gz`. Для восстановления при необходимости используется `sudo ./services/mariadb-redis/restore.sh <путь_к_архиву>`.
+
+### 2.2. Обновление MariaDB
+
+- В **OpenShip UI**: внесите изменения в репозиторий (или смените `MARIADB_VERSION` в переменных) и нажмите **Redeploy**. Переменная `MARIADB_AUTO_UPGRADE=1` автоматически обновит системные таблицы при смене минорной/мажорной версии поверх тома `mariadb_data`.
+- Через **CLI** на хосте:
+  ```bash
+  sudo ./deploy-services.sh --pull
   ```
 
-#### База данных проекта Noire:
-
-- **Имя БД**: `noire`
-- **Пользователь**: `noire`
-- **Пароль**: `<NOIRE_DB_PASSWORD>`
-- **Привилегии**: `ALL PRIVILEGES ON \`noire\`.* TO 'noire'@'%'`
-
-### 2.2. Redis 7.4-alpine
-
-- **Имя контейнера**: `redis`
-- **Основная сеть**: `openship-mariadb` (подсеть `172.20.0.0/16`, статический IP: `172.20.0.11`)
-- **Внутренний порт**: `6379`
-- **Сетевой алиас (DNS)**: `redis`
-- **Том (Volume)**: `redis_data:/data`
-- **Пароль аутентификации**: `<REDIS_PASSWORD>`
-- **Параметры запуска**:
-  ```text
-  redis-server --requirepass <REDIS_PASSWORD> --maxmemory 48mb --maxmemory-policy allkeys-lru
-  ```
-
-### 2.3. phpMyAdmin (PMA)
-
-- **Имя контейнера**: `openship-openship-deploy-phpmyadmin`
-- **Локальный порт проксирования**: `127.0.0.1:20003` -> контейнер `:80`
-- **Публичный домен**: **`https://pma.example.com`**
-- **Статус**: `HTTP 200 OK`, форма входа активна.
-- **Подключение к MariaDB**: автоматически направлено на хост `mariadb:3306`.
-- **Вход**: пользователь `root` (пароль `<MARIADB_ROOT_PASSWORD>`) или `noire` (пароль `<NOIRE_DB_PASSWORD>`).
-
 ---
 
-## 3. Развёрнутый проект: Noire (Hookah-CRM)
+## 3. Подключение проектов к `mariadb` и `redis` по алиасам
 
-Проект в OpenShip: **`Noire`** (`<PROJECT_ID>`)  
-Исходный код: `HomaEEE/Hookah-CRM` (ветка `v4`, путь `deploy/docker-compose.yml`)
+Чтобы любой развёрнутый проект общался с общей базой по DNS-именам `mariadb` и `redis`:
 
-- **Имя контейнера**: `openship-noire-web`
-- **Локальный порт**: `127.0.0.1:20000` -> контейнер `:80`
-- **Публичный домен**: **`https://noire-test.example.com`**
-- **Стек runtime**: **FrankenPHP 1.x (PHP 8.4.26) + Caddy + Laravel 12 + Livewire + Filament 5**
-- **Статус**: `HTTP 200 OK`, главная страница отдается со сжатием и кэшем.
-- **Сессии и кэш**: активны в Redis (ключи с префиксами `noire_database_noire_cache_*`).
-- **СУБД**: подключена к `mariadb:3306` (76 таблиц, все миграции применены).
-
----
-
-## 4. Сетевая модель OpenShip и межпроектное взаимодействие
-
-### 4.1. Особенность OpenShip
-
-OpenShip для каждого создаваемого проекта автоматически генерирует изолированную Docker-сеть bridge:
-
-- Проект инфраструктуры: сеть `openship-openship-deploy` (172.18.0.0/16).
-- Проект Noire: сеть `openship-noire` (172.19.0.0/16).
-- Любой будущий проект: сеть `openship-<project_slug>` (172.20.0.0/16 и т.д.).
-
-### 4.2. Как контейнеры получают доступ к `mariadb` и `redis`
-
-В Docker контейнер может быть одновременно подключен к двум и более сетям:
-
-1. Контейнер проекта создаётся в своей сети проекта (для связи со своим edge-роутером).
-2. Контейнер подключается к сети СУБД командой:
+1. **Создайте БД и пользователя** (единожды для нового проекта):
    ```bash
-   docker network connect openship-openship-deploy <container_name>
+   docker exec mariadb mariadb -u root -p"<MARIADB_ROOT_PASSWORD>" -e "
+   CREATE DATABASE IF NOT EXISTS \`<db_name>\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   CREATE USER IF NOT EXISTS '<db_user>'@'%' IDENTIFIED BY '<db_pass>';
+   GRANT ALL PRIVILEGES ON \`<db_name>\`.* TO '<db_user>'@'%';
+   FLUSH PRIVILEGES;
+   "
    ```
-3. После подключения к сети `openship-openship-deploy` внутренний Docker DNS начинает мгновенно разрешать имена `mariadb` и `redis` для этого контейнера!
+2. **Укажите алиасы в переменных окружения проекта**:
+   ```dotenv
+   DB_CONNECTION=mariadb
+   DB_HOST=mariadb
+   DB_PORT=3306
+   REDIS_HOST=redis
+   REDIS_PORT=6379
+   ```
+3. **Свяжите проект с сетью БД в OpenShip**:
+   - В OpenShip UI подключите сервис/проект к проекту БД (Connected Services) — OpenShip сам добавит контейнер проекта в сеть БД до старта приложения.
+   - Либо, если проект деплоится автономно, подключите его контейнер к сети стека БД:
+     ```bash
+     docker network connect <имя_сети_стека_бд> <имя_контейнера_проекта>
+     ```
 
 ---
 
-## 5. Точные команды, выполненные при деплое
+## 4. Деплой проектов без Dockerfile на едином PHP 8.4 (`openship.json`)
 
-### Шаг 1. Создание и деплой инфраструктуры MariaDB + Redis + PMA
+Чтобы не писать `Dockerfile` и `docker-compose.yml` в каждом репозитории и переиспользовать один кэшированный образ PHP 8.4 на всём сервере, достаточно одного файла `openship.json` в корне проекта.
 
-```bash
-# Через OpenShip MCP / API:
-# 1. post_projects
-#    name: "OpenShip-deploy", slug: "openship-deploy", serverId: "<SERVER_ID>"
-#    gitOwner: "HomaEEE", gitRepo: "OpenShip-deploy", gitBranch: "main"
-#    composePath: "services/mariadb-redis/docker-compose.yml"
-#
-# 2. post_deployments_build_access (передача паролей)
-#    MARIADB_ROOT_PASSWORD: "<MARIADB_ROOT_PASSWORD>"
-#    REDIS_PASSWORD: "<REDIS_PASSWORD>"
-#    ENABLE_PHPMYADMIN: "true"
+### 4.1. Как работает единый PHP-пакет в OpenShip (`runtimeVersion`)
 
-# 3. Маршрутизация PMA на домен pma.example.com
-#    post_domains: hostname: "pma.example.com", isPrimary: true, externalIngress: true
-#    patch_projects_by_id_services_by_serviceId (<SERVICE_ID>): customDomain: "pma.example.com", exposed: true, exposedPort: "80"
-#    patch_projects_by_id: port: 20003, routeStrategy: "loopback-port"
-#    post_projects_by_id_routing_retry
-```
+При указании `"runtimeVersion": "8.4"` (или без него, если 8.4 — дефолт платформы) OpenShip автоматически использует стандартную пару образов:
 
-### Шаг 2. Создание базы данных и пользователя под Noire
+| Назначение | Образ | Зачем нужен |
+| :--- | :--- | :--- |
+| **Builder (сборка)** | `php:8.4-cli-bookworm` | Временный контейнер этапа сборки: запускает `composer install --no-dev --optimize-autoloader` и проверяет `platform-reqs` (версию PHP и расширения из `composer.json`), чтобы не тащить кэш Composer и утилиты сборки в продакшн. |
+| **Runtime (продакшн)** | `dunglas/frankenphp:1-php8.4-bookworm` | Единый общий рабочий образ с FrankenPHP (Caddy + встроенный PHP 8.4). Переиспользуется между всеми проектами и сервисом `phpmyadmin`. |
 
-```bash
-docker exec openship-openship-deploy-mariadb mariadb -u root -p<MARIADB_ROOT_PASSWORD> -e "
-CREATE DATABASE IF NOT EXISTS \`noire\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS 'noire'@'%' IDENTIFIED BY '<NOIRE_DB_PASSWORD>';
-ALTER USER 'noire'@'%' IDENTIFIED BY '<NOIRE_DB_PASSWORD>';
-GRANT ALL PRIVILEGES ON \`noire\`.* TO 'noire'@'%';
-FLUSH PRIVILEGES;
-"
-```
+> [!TIP]
+> **Если вы хотите вообще не собирать зависимости на сервере**: закоммитьте собранные `vendor/` (и `public/build/`) в артефакт деплоя или соберите их заранее в CI, а этап Build в OpenShip отключите. Тогда временный `php:8.4-cli-bookworm` вообще не запускается, и все проекты сразу стартуют на одном общем `dunglas/frankenphp:1-php8.4-bookworm`.
 
-### Шаг 3. Деплой проекта Noire в OpenShip
-
-```bash
-# 1. post_projects
-#    name: "Noire", slug: "noire", serverId: "<SERVER_ID>"
-#    gitOwner: "HomaEEE", gitRepo: "Hookah-CRM", gitBranch: "v4"
-#    composePath: "deploy/docker-compose.yml", port: 80
-
-# 2. post_deployments_build_access
-#    Передача переменных окружения (APP_KEY, DB_HOST=mariadb, DB_DATABASE=noire, DB_USERNAME=noire, DB_PASSWORD, REDIS_HOST=redis, REDIS_PASSWORD...)
-#    Маршрутизация noire-test.example.com -> порт 80
-```
-
-### Шаг 4. Подключение контейнера Noire к сети MariaDB/Redis
-
-```bash
-docker network connect openship-deploy openship-noire-web
-docker restart openship-noire-web
-```
-
----
-
-## 6. Универсальный пайплайн для автоматизации деплоя других проектов
-
-Для подключения любого нового проекта к MariaDB и Redis достаточно автоматизировать 2 действия после сборки контейнера в OpenShip:
-
-1. Создать БД и пользователя в MariaDB.
-2. Подключить контейнер проекта к сети `openship-openship-deploy`.
-
-### 6.1. Скрипт автоматического подключения (`openship-link-infra.sh`)
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-PROJECT_SLUG="$1"              # например: newapp
-DB_NAME="${2:-$PROJECT_SLUG}"  # имя БД
-DB_USER="${3:-$PROJECT_SLUG}"  # имя пользователя
-DB_PASS="$4"                   # пароль пользователя
-
-INFRA_NET="openship-deploy"
-MARIADB_CONTAINER="openship-openship-deploy-mariadb"
-ROOT_PASS="<MARIADB_ROOT_PASSWORD>"
-
-# 1. Создание БД и пользователя в MariaDB
-echo "==> Provisioning database '${DB_NAME}' in MariaDB..."
-docker exec "$MARIADB_CONTAINER" mariadb -u root -p"$ROOT_PASS" -e "
-CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASS}';
-ALTER USER '${DB_USER}'@'%' IDENTIFIED BY '${DB_PASS}';
-GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'%';
-FLUSH PRIVILEGES;
-"
-echo "==> Database '${DB_NAME}' provisioned."
-
-# 2. Поиск контейнера проекта и подключение к общей сети
-TARGET_CONTAINER="$(docker ps --filter "name=openship-${PROJECT_SLUG}" --format '{{.Names}}' | head -n 1)"
-
-if [[ -z "$TARGET_CONTAINER" ]]; then
-    echo "==> ERROR: Container for project '${PROJECT_SLUG}' not found."
-    exit 1
-fi
-
-# Примечание: Благодаря службе openship-network-attacher.service
-# все контейнеры 'openship-*' подключаются к сети openship автоматически при создании!
-# Ручной docker network connect оставлен как резервный вариант:
-echo "==> Checking '${TARGET_CONTAINER}' in '${INFRA_NET}'..."
-if ! docker inspect "$TARGET_CONTAINER" --format '{{json .NetworkSettings.Networks}}' | grep -q "$INFRA_NET"; then
-    docker network connect "$INFRA_NET" "$TARGET_CONTAINER"
-    docker restart "$TARGET_CONTAINER"
-    echo "==> Successfully connected '${TARGET_CONTAINER}' to '${INFRA_NET}'."
-else
-    echo "==> '${TARGET_CONTAINER}' is already connected to '${INFRA_NET}'."
-fi
-```
-
----
-
-## 7. Новые возможности OpenShip (версии 0.9.0 – 0.9.1)
-
-### 7.1. Встроенный CI/CD движок: OpenShip Actions (0.9.0+)
-
-- **Локальный GitHub Actions Runner**: исполнение пайплайнов `.github/workflows/*.yml` или `.openship/workflows/*.yml` непосредственно на своих серверах (Linux/macOS) или Cloud-раннерах.
-- **GitHub Deployment Checks**: автоматическая передача статусов сборки и деплоя обратно в GitHub (коммиты, Pull Requests) через GitHub App / Checks API.
-- **Reusable Workflows (Переиспользуемые воркфлоу)**: поддержка локальных и удаленных вызовов (`uses:`), типизированных входных параметров, передачи секретов, матричных сборок (`matrix`) и выражений.
-- **Визуальный редактор воркфлоу**: граф топологии задач, редактирование шагов по месту, синхронизация с Git.
-- **OIDC токены и артефакты**: генерация короткоживущих OIDC-токенов для авторизации без постоянных секретов, кеширование зависимостей между запусками.
-
-### 7.2. Управление средами исполнения и деплоем (0.9.1)
-
-- **Нативная поддержка PHP 8.3 и 8.4**: параметр `runtimeVersion: "8.4"` для автоматической сборки PHP без ручного написания Dockerfile.
-- **Кастомные образы (`runtimeImage`)**: возможность переопределить базовый runtime-образ для production-контейнеров.
-- **Изолированный перезапуск (Selective Redeploy)**: при перезапуске compose-стеков OpenShip 0.9.1 обновляет только те сервисы, чьи образы или конфигурация изменились. Внешние сервисы (базы данных, Redis) остаются активными без обрыва сессий.
-- **Path-based Routing**: OpenResty сохраняет точечные префиксные маршруты (`/api`, `/admin`) без необходимости наличия глобального catch-all хоста.
-- **Каталог приложений (App Catalog)** и русская локализация панели управления.
-
----
-
-## 8. Варианты деплоя Laravel-проектов в OpenShip
-
-### 8.1. Способ 1: Готовый контейнер FrankenPHP (Рекомендуемый / Noire Stack)
-
-Максимальная производительность (Worker mode), HTTP/3, автоматический HTTPS и низкое потребление RAM.
-
-- **Конфигурация `deploy/docker-compose.yml`**:
-
-  ```yaml
-  services:
-    web:
-      build:
-        context: ..
-        dockerfile: deploy/Dockerfile
-      restart: unless-stopped
-      environment:
-        APP_ENV: production
-        APP_DEBUG: "false"
-        APP_KEY: ${APP_KEY}
-        DB_CONNECTION: mysql
-        DB_HOST: mariadb
-        DB_PORT: 3306
-        DB_DATABASE: ${DB_DATABASE}
-        DB_USERNAME: ${DB_USERNAME}
-        DB_PASSWORD: ${DB_PASSWORD}
-        CACHE_STORE: redis
-        SESSION_DRIVER: redis
-        QUEUE_CONNECTION: redis
-        REDIS_HOST: redis
-        REDIS_PASSWORD: ${REDIS_PASSWORD}
-        REDIS_PORT: 6379
-        FRANKENPHP_CONFIG: "worker ./public/index.php"
-      networks:
-        - default
-        - infra_net
-
-  networks:
-    default:
-    infra_net:
-      external: true
-      name: openship-openship-deploy
-  ```
-
-- **Преимущество**: Декларативное подключение к внешней сети `openship-openship-deploy` прямо в Compose-файле устраняет необходимость ручного вызова `docker network connect`.
-
-### 8.2. Способ 2: Нативный сборщик OpenShip (Buildpacks / Runtime)
-
-В конфигурации проекта (`openship.json` или через UI панели OpenShip):
+### 4.2. Эталонный `openship.json` для Laravel-проекта
 
 ```json
 {
-  "runtime": "php",
+  "$schema": "https://openship.io/openship.schema.json",
+  "framework": "laravel",
   "runtimeVersion": "8.4",
-  "buildCommand": "composer install --no-dev --optimize-autoloader && php artisan config:cache && php artisan route:cache && php artisan view:cache",
-  "runCommand": "php artisan serve --host=0.0.0.0 --port=80",
+  "optimize": true,
+  "installCommand": "composer install --no-dev --optimize-autoloader",
+  "buildCommand": "npm ci && npm run build",
+  "releaseCommands": [
+    "php artisan migrate --force"
+  ],
+  "startCommand": "SERVER_NAME=\":$PORT\" exec frankenphp run --config /etc/frankenphp/Caddyfile --adapter caddyfile",
+  "port": 80,
+  "volumes": ["storage"],
+  "domains": ["app.example.com"],
+  "roles": [
+    {
+      "name": "queue",
+      "kind": "worker",
+      "command": "exec php artisan queue:work --sleep=3 --tries=3",
+      "replicas": 1,
+      "stopGracePeriod": "90s"
+    },
+    {
+      "name": "scheduler",
+      "kind": "scheduler",
+      "command": "exec php artisan schedule:work",
+      "stopGracePeriod": "10s",
+      "singleton": true
+    }
+  ],
   "env": {
     "APP_ENV": "production",
-    "DB_HOST": "mariadb"
+    "APP_DEBUG": "false",
+    "DB_CONNECTION": "mariadb",
+    "DB_HOST": "mariadb",
+    "DB_PORT": "3306",
+    "REDIS_CLIENT": "phpredis",
+    "REDIS_HOST": "redis",
+    "REDIS_PORT": "6379",
+    "CACHE_STORE": "redis",
+    "SESSION_DRIVER": "redis",
+    "QUEUE_CONNECTION": "redis"
   }
 }
 ```
 
-### 8.3. Способ 3: Раздельные воркеры (Web + Queue + Cron)
+### 4.3. Ключевые правила `openship.json`
 
-Для высоконагруженных Laravel-проектов в одном Compose-проекте OpenShip:
-
-```yaml
-services:
-  web:
-    build: .
-    ports: ["80"]
-  queue:
-    build: .
-    command: php artisan horizon # или: php artisan queue:work --sleep=3 --tries=3
-    restart: unless-stopped
-  scheduler:
-    build: .
-    command: php artisan schedule:work
-    restart: unless-stopped
-```
+1. **`"optimize": true`** вместо вызова `php artisan optimize` в `buildCommand` или `releaseCommands`:
+   - `config:cache` замораживает переменные окружения (`env()`). При запуске через `"optimize": true` прогрев происходит **при старте контейнера**, когда OpenShip уже передал реальные секреты (`DB_PASSWORD`, `APP_KEY`, `REDIS_PASSWORD`).
+2. **`"releaseCommands": ["php artisan migrate --force"]`**:
+   - Выполняется один раз перед переключением трафика во временном контейнере с доступом к сети БД. Если миграция падает с ошибкой, деплой останавливается, а старая версия сайта продолжает обслуживать пользователей.
+3. **`"roles"` для воркеров и крона**:
+   - Используют **тот же самый образ**, те же переменные окружения (без `PORT`) и тот же том `storage`, подключаясь к сети БД до запуска процесса.
+   - Обязательно используйте `exec` перед командой (`exec php artisan queue:work`), чтобы сигнал остановки `SIGTERM` доходил до PHP-процесса при обновлении.
 
 ---
 
-## 9. Модульная система GitHub и частичные обновления
+## 5. Как обновлять проекты при смене версии PHP (8.5+)
 
-Возможно ли использовать модульную архитектуру и выполнять частичные обновления? **Да, через 3 взаимодополняющих механизма**:
+### 5.1. Обновление прикладных проектов (`openship.json`)
 
-### 9.1. Механизм 1: Фильтрация по путям в GitHub / OpenShip Actions (`paths`)
+1. **Если `runtimeVersion` НЕ указан в `openship.json` (опущен)**:
+   - Проект использует управляемый дефолт OpenShip. Как только OpenShip обновит версию PHP по умолчанию, обычный **Redeploy** переведёт проект на новую версию автоматически.
+2. **Если `runtimeVersion` зафиксирован явно (`"8.4"`)**:
+   - Когда выйдет поддержка PHP 8.5 в OpenShip, обновите значение в `openship.json`:
+     ```json
+     "runtimeVersion": "8.5"
+     ```
+     (или переключите версию в UI проекта: **Build settings → Runtime version**).
+   - Сделайте `git push` или нажмите **Redeploy**.
+3. **Гарантия безопасности и отката**:
+   - На этапе сборки OpenShip запускает `composer check-platform-reqs` в реальном образе новой версии PHP. Если код или пакеты в `composer.json` не поддерживают PHP 8.5, сборка упадёт **до активации**, а рабочий контейнер на PHP 8.4 продолжит работу без простоя.
+   - При необходимости отката OpenShip хранит снимок образа предыдущего релиза — **Rollback** мгновенно вернёт проект на PHP 8.4 без потери данных в `storage/` и MariaDB.
 
-Если проект организован как монорепозиторий или модульный монолит (например, `nWidart/laravel-modules` или отдельные директории фронтенда/воркеров):
+### 5.2. Обновление PHP для `phpMyAdmin`
 
-```yaml
-# .github/workflows/deploy-module.yml
-name: Deploy Billing Module
-on:
-  push:
-    branches: [main]
-    paths:
-      - "Modules/Billing/**"
-      - "config/billing.php"
-
-jobs:
-  test-and-deploy:
-    runs-on: self-hosted # Запуск на раннере OpenShip
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run Module Tests
-        run: php artisan module:test Billing
-      - name: Trigger Partial Module Migration
-        run: |
-          docker exec openship-noire-web php artisan module:migrate Billing --force
-          docker exec openship-noire-web php artisan module:publish-translation Billing
-```
-
-- **Результат**: Изменения в одном модуле не запускают полную пересборку монолита; выполняются только изолированные миграции и тесты модуля.
-
-### 9.2. Механизм 2: Переиспользуемые воркфлоу (Reusable Workflows)
-
-Для распределённых репозиториев (когда модули живут в отдельных Git-репозиториях `org/crm-billing`, `org/crm-auth`):
-
-```yaml
-# В репозитории модуля: .github/workflows/release.yml
-name: Release Module
-on:
-  push:
-    tags: ["v*"]
-
-jobs:
-  call-deploy:
-    uses: HomaEEE/OpenShip-deploy/.github/workflows/reusable-module-deploy.yml@main
-    with:
-      module_name: "Billing"
-      target_project: "noire"
-    secrets: inherit
-```
-
-OpenShip Actions (0.9.0+) полноценно валидирует и исполняет Reusable Workflows со сквозной передачей секретов.
-
-### 9.3. Механизм 3: Git Submodules (Субмодули)
-
-При использовании `git submodule`:
-
-1. **Особенность OpenShip**: базовый агент деплоя делает стандартный `git clone`. Для подгрузки субмодулей сборка в Dockerfile должна содержать:
-   ```dockerfile
-   # В Dockerfile при сборке:
-   ARG GITHUB_TOKEN
-   RUN git submodule update --init --recursive
-   ```
-   Или субмодули монтируются как общие тома (`volumes`), если код интерпретируется на лету.
-2. **Частичный деплой**: Обновление ссылки на коммит субмодуля в родительском репо (`git add Modules/Billing && git commit`) фиксирует точный SHA версии модуля.
-
-### 9.4. Механизм 4: Selective Container Recreation (OpenShip 0.9.1)
-
-В Compose-проектах OpenShip 0.9.1 отслеживает хеши неизменных образов и сервисов:
-
-- Если изменен только код `web`-сервиса или отдельного микросервиса, пересобирается и заменяется **только его контейнер**.
-- Сервисы очередей, кеша и баз данных остаются нетронутыми, исключая простой всей системы.
-
----
-
-## 10. Регламент деплоя нового модуля в существующий проект (Шпаргалка)
-
-1. **Коммит изменений модуля** с тегом или пушем в ветку `main`.
-2. **Автоматический триггер OpenShip Actions** по маске путей (`paths`).
-3. **Применение миграций конкретного модуля**:
-   ```bash
-   docker exec openship-<slug>-web php artisan module:migrate <ModuleName> --force
-   ```
-4. **Сброс кеша маршрутов и конфигурации**:
-   ```bash
-   docker exec openship-<slug>-web php artisan optimize:clear
-   docker exec openship-<slug>-web php artisan optimize
-   ```
-5. **Worker Reload (при использовании FrankenPHP / Octane)**:
-   ```bash
-   # Мягкий перезапуск воркеров без перезапуска самого контейнера:
-   docker exec openship-<slug>-web php artisan octane:reload
-   ```
+Версия PHP для `phpmyadmin` вынесена в переменную `PHP_VERSION` (по умолчанию `8.4`). Для перехода на `8.5` достаточно:
+1. Изменить `PHP_VERSION=8.5` в переменных проекта `OpenShip-deploy` в OpenShip UI (или в `.env`).
+2. Нажать **Redeploy** (или выполнить `sudo ./deploy-services.sh --pull` при локальном запуске).
+3. Тома `mariadb_data`, `redis_data` и `pma_data` при этом полностью сохраняются.
