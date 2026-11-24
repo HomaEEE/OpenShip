@@ -19,6 +19,10 @@
     "ENABLE_PHPMYADMIN": {
       "value": "true",
       "secret": false
+    },
+    "PHPMYADMIN_DOMAIN": {
+      "value": "",
+      "secret": false
     }
   }
 }

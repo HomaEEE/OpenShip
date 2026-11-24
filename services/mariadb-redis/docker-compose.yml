@@ -69,7 +69,8 @@ services:
       UPLOAD_LIMIT: ${PHPMYADMIN_UPLOAD_LIMIT:-512M}
       MEMORY_LIMIT: ${PHPMYADMIN_MEMORY_LIMIT:-128M}
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD:-}}
-    ports:
+      PMA_ABSOLUTE_URI: ${PHPMYADMIN_DOMAIN:+https://${PHPMYADMIN_DOMAIN}/}
+    expose:
       - "80"
     volumes:
       - pma_data:/app/public
