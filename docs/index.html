@@ -1,22 +1,22 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenShip Installer — Command Generator</title>
-  <meta name="description" content="Interactive setup & 1-click command generator for OpenShip Control Plane provisioning on Ubuntu 24.04 LTS.">
+  <title>OpenShip Deploy — Мастер сборки команд</title>
+  <meta name="description" content="Интерактивный мастер настройки и генератор команд для OpenShip Control Plane, FrankenPHP/Caddy стеков и VPS Security Audit на Ubuntu 24.04 LTS.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg-base: #07090e;
-      --bg-surface: #0e131f;
-      --bg-card: rgba(17, 24, 39, 0.75);
-      --bg-card-hover: rgba(30, 41, 59, 0.6);
-      --bg-input: #131b2e;
+      --bg-surface: #0e1420;
+      --bg-card: rgba(15, 23, 38, 0.82);
+      --bg-card-hover: rgba(26, 36, 56, 0.85);
+      --bg-input: #111a2b;
       --border-subtle: rgba(255, 255, 255, 0.08);
-      --border-accent: rgba(56, 189, 248, 0.3);
+      --border-accent: rgba(56, 189, 248, 0.35);
       --border-focus: #38bdf8;
       --text-main: #f1f5f9;
       --text-muted: #94a3b8;
@@ -26,7 +26,6 @@
       --accent-emerald: #10b981;
       --accent-amber: #f59e0b;
       --accent-violet: #8b5cf6;
-      --glow-cyan: rgba(56, 189, 248, 0.15);
       --radius-sm: 6px;
       --radius-md: 10px;
       --radius-lg: 14px;
@@ -35,1096 +34,1073 @@
       --font-mono: 'JetBrains Mono', monospace;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       background-color: var(--bg-base);
-      background-image: 
-        radial-gradient(circle at 15% 10%, rgba(56, 189, 248, 0.07) 0%, transparent 40%),
-        radial-gradient(circle at 85% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 50% 80%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+      background-image:
+        radial-gradient(circle at 12% 8%, rgba(56, 189, 248, 0.09) 0%, transparent 38%),
+        radial-gradient(circle at 88% 18%, rgba(139, 92, 246, 0.09) 0%, transparent 40%),
+        radial-gradient(circle at 50% 85%, rgba(16, 185, 129, 0.06) 0%, transparent 45%);
       background-attachment: fixed;
       color: var(--text-main);
       font-family: var(--font-sans);
-      line-height: 1.5;
+      line-height: 1.55;
       min-height: 100vh;
       padding: 2rem 1rem 4rem;
     }
 
-    .container {
-      max-width: 1100px;
-      margin: 0 auto;
-    }
+    .container { max-width: 1180px; margin: 0 auto; }
 
-    /* Header */
-    header {
-      text-align: center;
-      margin-bottom: 2.5rem;
-    }
-
+    /* Hero */
+    header { text-align: center; margin-bottom: 2rem; }
     .badge-bar {
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
       background: rgba(56, 189, 248, 0.1);
-      border: 1px solid rgba(56, 189, 248, 0.25);
-      padding: 0.25rem 0.75rem;
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      padding: 0.3rem 0.85rem;
       border-radius: var(--radius-full);
       font-size: 0.75rem;
       font-weight: 600;
       color: var(--accent-cyan);
+      letter-spacing: 0.04em;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
       margin-bottom: 1rem;
     }
-
-    .badge-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent-cyan);
-      box-shadow: 0 0 8px var(--accent-cyan);
-    }
-
     h1 {
-      font-size: clamp(1.8rem, 4vw, 2.75rem);
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+      font-size: clamp(1.75rem, 3.2vw, 2.45rem);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.65rem;
+      background: linear-gradient(135deg, #f8fafc 20%, #38bdf8 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      margin-bottom: 0.75rem;
     }
-
-    .subtitle {
-      color: var(--text-muted);
-      font-size: 1.05rem;
-      max-width: 650px;
+    .hero-desc {
+      max-width: 760px;
       margin: 0 auto;
+      color: var(--text-muted);
+      font-size: 0.96rem;
     }
 
-    /* Presets */
-    .presets-title {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 700;
-      color: var(--text-dim);
-      margin-bottom: 0.75rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .preset-grid {
+    /* Quick Strip */
+    .guide-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 0.75rem;
-      margin-bottom: 2rem;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.85rem;
+      margin-bottom: 1.75rem;
     }
-
-    .preset-btn {
+    @media (max-width: 900px) { .guide-grid { grid-template-columns: 1fr; } }
+    .guide-item {
       background: var(--bg-card);
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-md);
-      padding: 0.875rem 1rem;
-      color: var(--text-main);
-      text-align: left;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-      backdrop-filter: blur(12px);
+      padding: 0.9rem 1rem;
+      backdrop-filter: blur(10px);
     }
-
-    .preset-btn:hover {
-      background: var(--bg-card-hover);
-      border-color: var(--border-accent);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px -6px var(--glow-cyan);
-    }
-
-    .preset-btn.active {
-      border-color: var(--accent-cyan);
-      background: rgba(56, 189, 248, 0.08);
-    }
-
-    .preset-name {
-      font-size: 0.9rem;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-
-    .preset-desc {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      line-height: 1.35;
-    }
-
-    /* Quick Guide Section */
-    .guide-banner {
-      background: rgba(14, 19, 31, 0.7);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-lg);
-      padding: 1.25rem 1.5rem;
-      margin-bottom: 2rem;
-      backdrop-filter: blur(16px);
-      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
-    }
-
-    .guide-title {
-      font-size: 0.875rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--accent-cyan);
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.85rem;
-    }
-
-    .guide-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1rem;
-    }
-
-    .guide-item {
-      background: rgba(7, 9, 14, 0.6);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-md);
-      padding: 0.85rem 1rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
-    }
-
     .guide-item-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.8rem;
+      font-size: 0.82rem;
       font-weight: 600;
-      color: var(--text-main);
+      margin-bottom: 0.5rem;
     }
-
     .guide-item-badge {
-      font-size: 0.675rem;
+      font-size: 0.68rem;
       padding: 0.15rem 0.5rem;
       border-radius: var(--radius-full);
       background: rgba(56, 189, 248, 0.12);
       color: var(--accent-cyan);
       font-weight: 600;
     }
-
     .guide-code-box {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      background: #080c14;
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: var(--radius-sm);
-      padding: 0.4rem 0.6rem;
       gap: 0.5rem;
+      background: #070b12;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.45rem 0.6rem;
+      margin-bottom: 0.45rem;
     }
-
     .guide-code {
       font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: #38bdf8;
-      overflow-x: auto;
+      font-size: 0.72rem;
+      color: #cbd5e1;
       white-space: nowrap;
-      scrollbar-width: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
     }
-
-    .guide-code::-webkit-scrollbar {
-      display: none;
-    }
-
     .guide-copy-btn {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid var(--border-subtle);
-      color: var(--text-muted);
+      background: rgba(56, 189, 248, 0.14);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--accent-cyan);
       border-radius: var(--radius-sm);
-      padding: 0.2rem 0.45rem;
+      padding: 0.2rem 0.55rem;
       font-size: 0.7rem;
+      font-weight: 600;
       cursor: pointer;
-      transition: all 0.15s ease;
       flex-shrink: 0;
     }
+    .guide-copy-btn:hover { background: rgba(56, 189, 248, 0.24); }
+    .guide-item-desc { font-size: 0.76rem; color: var(--text-dim); }
 
-    .guide-copy-btn:hover {
-      background: rgba(56, 189, 248, 0.2);
-      color: var(--accent-cyan);
-      border-color: var(--accent-cyan);
+    /* Presets */
+    .section-kicker {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      margin-bottom: 0.6rem;
     }
-
-    .guide-item-desc {
-      font-size: 0.72rem;
-      color: var(--text-dim);
-      line-height: 1.35;
+    .preset-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1.75rem;
     }
+    @media (max-width: 960px) { .preset-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px) { .preset-grid { grid-template-columns: 1fr; } }
+    .preset-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 0.85rem 0.95rem;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, background 0.15s, transform 0.15s;
+    }
+    .preset-btn:hover { border-color: var(--border-accent); background: var(--bg-card-hover); transform: translateY(-1px); }
+    .preset-btn.active { border-color: var(--accent-cyan); background: rgba(56, 189, 248, 0.09); }
+    .preset-name { font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.25rem; }
+    .preset-desc { font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; }
 
     /* Main Grid */
     .main-grid {
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 1.5rem;
+      grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.95fr);
+      gap: 1.4rem;
+      align-items: start;
     }
+    @media (max-width: 960px) { .main-grid { grid-template-columns: 1fr; } }
 
-    @media (min-width: 900px) {
-      .main-grid {
-        grid-template-columns: 1.15fr 0.85fr;
-      }
+    /* Wizard Stepper */
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.5rem;
+      margin-bottom: 1rem;
     }
+    @media (max-width: 600px) { .stepper { grid-template-columns: repeat(2, 1fr); } }
+    .step-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 0.55rem 0.7rem;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .step-pill .step-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.07);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      flex-shrink: 0;
+    }
+    .step-pill.active {
+      border-color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--text-main);
+    }
+    .step-pill.active .step-num { background: var(--accent-cyan); color: #06101b; }
+    .step-pill.done .step-num { background: var(--accent-emerald); color: #052016; }
+    .step-pill.disabled { opacity: 0.45; cursor: not-allowed; }
 
-    /* Glass Cards */
+    /* Cards & Controls */
     .card {
       background: var(--bg-card);
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-lg);
-      padding: 1.5rem;
-      backdrop-filter: blur(16px);
-      margin-bottom: 1.25rem;
+      padding: 1.35rem;
+      backdrop-filter: blur(12px);
     }
-
+    .step-panel { display: none; }
+    .step-panel.active { display: block; }
     .card-header {
       display: flex;
       align-items: center;
-      gap: 0.6rem;
-      margin-bottom: 1.25rem;
-      padding-bottom: 0.75rem;
-      border-bottom: 1px solid var(--border-subtle);
+      gap: 0.65rem;
+      margin-bottom: 0.35rem;
     }
+    .card-icon { font-size: 1.15rem; }
+    .card-title { font-size: 1.05rem; font-weight: 700; }
+    .card-subtitle { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.15rem; }
 
-    .card-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: var(--radius-sm);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(56, 189, 248, 0.15);
-      color: var(--accent-cyan);
-      font-size: 0.95rem;
+    .radio-card-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.7rem;
+      margin-bottom: 1rem;
     }
-
-    .card-title {
-      font-size: 1.05rem;
-      font-weight: 700;
-      letter-spacing: -0.01em;
+    @media (max-width: 680px) { .radio-card-grid { grid-template-columns: 1fr; } }
+    .radio-card {
+      display: block;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 0.85rem;
+      cursor: pointer;
+      transition: all 0.15s;
     }
-
-    /* Form controls */
-    .form-group {
-      margin-bottom: 1.1rem;
+    .radio-card input { display: none; }
+    .radio-card.selected {
+      border-color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.1);
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.25);
     }
+    .radio-card-title { font-size: 0.86rem; font-weight: 600; margin-bottom: 0.3rem; }
+    .radio-card-desc { font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; }
 
-    .form-group:last-child {
-      margin-bottom: 0;
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.85rem;
     }
+    @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
 
+    .form-group { margin-bottom: 1rem; }
     .form-label {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.825rem;
+      font-size: 0.82rem;
       font-weight: 600;
-      color: var(--text-muted);
-      margin-bottom: 0.4rem;
+      margin-bottom: 0.35rem;
+      color: var(--text-main);
     }
-
-    .form-label span.req {
+    .flag-tag {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
       color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.1);
+      padding: 0.1rem 0.4rem;
+      border-radius: var(--radius-sm);
+      font-weight: 500;
     }
-
-    .input-wrapper {
-      position: relative;
-      display: flex;
-      align-items: center;
-    }
-
     .form-input, .form-select, .form-textarea {
       width: 100%;
       background: var(--bg-input);
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-sm);
-      padding: 0.65rem 0.85rem;
+      padding: 0.55rem 0.75rem;
       color: var(--text-main);
       font-family: var(--font-sans);
-      font-size: 0.875rem;
-      transition: all 0.15s ease;
+      font-size: 0.86rem;
       outline: none;
     }
-
-    .form-input:focus, .form-select:focus, .form-textarea:focus {
-      border-color: var(--border-focus);
-      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
-    }
-
-    .form-textarea {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      resize: vertical;
-      min-height: 80px;
-    }
+    .form-textarea { font-family: var(--font-mono); font-size: 0.76rem; min-height: 76px; resize: vertical; }
+    .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--border-focus); }
+    .field-help { font-size: 0.75rem; color: var(--text-dim); margin-top: 0.3rem; line-height: 1.4; }
 
     .btn-action {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid var(--border-subtle);
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      color: var(--accent-cyan);
       border-radius: var(--radius-sm);
-      color: var(--text-main);
-      padding: 0.35rem 0.6rem;
-      font-size: 0.75rem;
+      padding: 0.18rem 0.55rem;
+      font-size: 0.72rem;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.15s ease;
     }
+    .btn-action:hover { background: rgba(56, 189, 248, 0.22); }
 
-    .btn-action:hover {
-      background: rgba(56, 189, 248, 0.2);
-      border-color: var(--accent-cyan);
-      color: var(--accent-cyan);
-    }
-
-    /* Radio Cards */
-    .radio-card-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.6rem;
-    }
-
-    .radio-card {
-      position: relative;
-      background: var(--bg-input);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-sm);
-      padding: 0.75rem;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      user-select: none;
-    }
-
-    .radio-card input {
-      position: absolute;
-      opacity: 0;
-    }
-
-    .radio-card:hover {
-      border-color: var(--border-accent);
-    }
-
-    .radio-card.selected {
-      border-color: var(--accent-cyan);
-      background: rgba(56, 189, 248, 0.08);
-    }
-
-    .radio-card-title {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--text-main);
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-
-    .radio-card-desc {
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      margin-top: 0.2rem;
-    }
-
-    /* Toggles */
     .toggle-row {
       display: flex;
-      align-items: center;
       justify-content: space-between;
-      padding: 0.65rem 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      align-items: center;
+      gap: 1rem;
+      padding: 0.75rem 0.85rem;
+      background: rgba(17, 26, 43, 0.7);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      margin-bottom: 0.65rem;
     }
+    .toggle-title { display: block; font-size: 0.84rem; font-weight: 600; }
+    .toggle-desc { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 0.15rem; }
 
-    .toggle-row:last-child {
-      border-bottom: none;
+    .switch { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: #273248; border-radius: 999px; transition: 0.2s;
     }
+    .slider:before {
+      position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+      background: #f8fafc; border-radius: 50%; transition: 0.2s;
+    }
+    .switch input:checked + .slider { background: var(--accent-cyan); }
+    .switch input:checked + .slider:before { transform: translateX(18px); }
 
-    .toggle-info {
+    .wizard-nav {
       display: flex;
-      flex-direction: column;
-      gap: 0.15rem;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1.25rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border-subtle);
     }
-
-    .toggle-title {
-      font-size: 0.825rem;
+    .nav-btn {
+      padding: 0.55rem 1.05rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.84rem;
       font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-input);
       color: var(--text-main);
     }
-
-    .toggle-desc {
-      font-size: 0.725rem;
-      color: var(--text-dim);
+    .nav-btn:hover:not(:disabled) { border-color: var(--border-accent); }
+    .nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .nav-btn.primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb);
+      border-color: transparent;
+      color: #fff;
     }
+    .nav-btn.primary:hover { filter: brightness(1.08); }
 
-    .switch {
-      position: relative;
-      display: inline-block;
-      width: 40px;
-      height: 22px;
-      flex-shrink: 0;
+    /* Output Column */
+    .output-panel { position: sticky; top: 1.25rem; }
+    .summary-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-bottom: 0.75rem;
     }
-
-    .switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
+    .summary-chip {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--radius-full);
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
     }
-
-    .slider {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #334155;
-      transition: .2s;
-      border-radius: 22px;
-    }
-
-    .slider:before {
-      position: absolute;
-      content: "";
-      height: 16px;
-      width: 16px;
-      left: 3px;
-      bottom: 3px;
-      background-color: white;
-      transition: .2s;
-      border-radius: 50%;
-    }
-
-    input:checked + .slider {
-      background-color: var(--accent-cyan);
-    }
-
-    input:checked + .slider:before {
-      transform: translateX(18px);
-    }
-
-    /* Output Section */
-    .output-panel {
-      position: sticky;
-      top: 1.5rem;
-    }
+    .summary-chip strong { color: var(--text-main); }
 
     .terminal-card {
-      background: #090d16;
-      border: 1px solid rgba(56, 189, 248, 0.3);
+      background: #060911;
+      border: 1px solid rgba(56, 189, 248, 0.25);
       border-radius: var(--radius-lg);
       overflow: hidden;
-      box-shadow: 0 16px 36px -10px rgba(0, 0, 0, 0.7), 0 0 24px -8px var(--glow-cyan);
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
     }
-
     .terminal-header {
-      background: #0d1322;
-      padding: 0.6rem 1rem;
       display: flex;
-      align-items: center;
       justify-content: space-between;
+      align-items: center;
+      padding: 0.65rem 0.9rem;
+      background: #0d1320;
       border-bottom: 1px solid var(--border-subtle);
+      gap: 0.5rem;
+      flex-wrap: wrap;
     }
-
-    .terminal-dots {
-      display: flex;
-      gap: 0.35rem;
-    }
-
-    .dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-
+    .terminal-dots { display: flex; gap: 6px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
     .dot-red { background: #ef4444; }
     .dot-yellow { background: #f59e0b; }
     .dot-green { background: #10b981; }
-
-    .terminal-tabs {
-      display: flex;
-      gap: 0.3rem;
-    }
-
+    .terminal-tabs { display: flex; gap: 0.3rem; flex-wrap: wrap; }
     .term-tab {
       background: transparent;
-      border: none;
-      padding: 0.25rem 0.6rem;
-      color: var(--text-dim);
-      font-size: 0.75rem;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      font-size: 0.72rem;
       font-weight: 600;
-      cursor: pointer;
+      padding: 0.25rem 0.55rem;
       border-radius: var(--radius-sm);
-      transition: all 0.15s ease;
+      cursor: pointer;
     }
-
     .term-tab.active {
+      background: rgba(56, 189, 248, 0.14);
+      border-color: rgba(56, 189, 248, 0.35);
       color: var(--accent-cyan);
-      background: rgba(56, 189, 248, 0.1);
     }
-
     .terminal-body {
-      padding: 1.25rem;
+      padding: 1rem;
       font-family: var(--font-mono);
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       line-height: 1.6;
       color: #e2e8f0;
-      word-break: break-all;
       white-space: pre-wrap;
-      max-height: 380px;
+      word-break: break-all;
+      max-height: 360px;
       overflow-y: auto;
-      user-select: all;
     }
-
-    .terminal-body .cmd-prefix { color: #f43f5e; font-weight: bold; }
-    .terminal-body .cmd-pipe { color: #38bdf8; }
-    .terminal-body .cmd-flag { color: #a78bfa; }
-    .terminal-body .cmd-val { color: #34d399; }
+    .cmd-prefix { color: #38bdf8; font-weight: 600; }
+    .cmd-pipe { color: #f59e0b; font-weight: 600; }
+    .cmd-flag { color: #a78bfa; }
+    .cmd-val { color: #34d399; }
 
     .terminal-footer {
-      padding: 0.85rem 1.25rem;
-      background: #0d1322;
+      padding: 0.75rem 0.9rem;
+      background: #0d1320;
       border-top: 1px solid var(--border-subtle);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
     }
-
     .copy-btn {
-      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
-      color: #07090e;
+      width: 100%;
+      padding: 0.65rem 1rem;
       border: none;
-      border-radius: var(--radius-sm);
-      padding: 0.6rem 1.25rem;
-      font-weight: 700;
-      font-size: 0.85rem;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, #0ea5e9, #3b82f6);
+      color: #fff;
+      font-size: 0.86rem;
+      font-weight: 600;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 0.4rem;
-      transition: all 0.2s ease;
-      width: 100%;
       justify-content: center;
+      gap: 0.5rem;
     }
-
-    .copy-btn:hover {
-      box-shadow: 0 4px 16px rgba(56, 189, 248, 0.4);
-      transform: translateY(-1px);
-    }
-
-    .copy-btn:active {
-      transform: translateY(0);
-    }
+    .copy-btn:hover { filter: brightness(1.08); }
 
     .quick-switches {
       display: flex;
-      gap: 1rem;
-      margin-top: 1rem;
-      padding: 0.5rem 0.25rem;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-top: 0.8rem;
     }
-
     .pill-checkbox {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      gap: 0.4rem;
-      font-size: 0.775rem;
-      color: var(--text-muted);
+      gap: 0.45rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      padding: 0.38rem 0.7rem;
+      border-radius: var(--radius-full);
+      font-size: 0.76rem;
+      font-family: var(--font-mono);
       cursor: pointer;
     }
 
-    .pill-checkbox input {
-      accent-color: var(--accent-cyan);
-    }
-
-    /* Note alert */
     .alert-box {
-      margin-top: 1.25rem;
-      background: rgba(15, 23, 42, 0.6);
-      border-left: 3px solid var(--accent-cyan);
-      border-radius: var(--radius-sm);
-      padding: 0.75rem 1rem;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      line-height: 1.5;
+      margin-top: 0.85rem;
+      padding: 0.75rem 0.9rem;
+      border-radius: var(--radius-md);
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      font-size: 0.78rem;
+      color: #fde68a;
+      line-height: 1.45;
+    }
+    .alert-box.info {
+      background: rgba(56, 189, 248, 0.08);
+      border-color: rgba(56, 189, 248, 0.25);
+      color: #bae6fd;
     }
 
-    .alert-box strong {
+    /* Reference Accordion */
+    .ref-section { margin-top: 2rem; }
+    details.ref-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 1rem 1.25rem;
+    }
+    details.ref-card summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.92rem;
       color: var(--text-main);
     }
-
-    /* Footer */
-    footer {
-      margin-top: 3.5rem;
-      padding-top: 1.5rem;
-      border-top: 1px solid var(--border-subtle);
-      text-align: center;
-      font-size: 0.8rem;
-      color: var(--text-dim);
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      align-items: center;
-    }
-
-    footer a {
+    .ref-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 1rem;
+      font-size: 0.78rem;
       color: var(--text-muted);
-      text-decoration: none;
-      transition: color 0.15s ease;
     }
+    @media (max-width: 860px) { .ref-grid { grid-template-columns: 1fr; } }
+    .ref-grid h4 { color: var(--accent-cyan); margin-bottom: 0.45rem; font-size: 0.82rem; }
+    .ref-grid ul { list-style: none; display: flex; flex-direction: column; gap: 0.35rem; }
+    .ref-grid code { color: #e2e8f0; font-family: var(--font-mono); font-size: 0.73rem; }
 
-    footer a:hover {
-      color: var(--accent-cyan);
+    footer {
+      margin-top: 2.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      font-size: 0.78rem;
+      color: var(--text-dim);
     }
+    footer a { color: var(--text-muted); text-decoration: none; }
+    footer a:hover { color: var(--accent-cyan); }
 
-    /* Tooltip banner */
     .toast {
       position: fixed;
-      bottom: 2rem;
-      right: 2rem;
+      bottom: 1.5rem;
+      right: 1.5rem;
       background: #10b981;
-      color: #042f2e;
-      padding: 0.75rem 1.25rem;
-      border-radius: var(--radius-md);
-      font-size: 0.85rem;
+      color: #052016;
       font-weight: 700;
-      box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+      font-size: 0.82rem;
+      padding: 0.65rem 1rem;
+      border-radius: var(--radius-md);
       display: none;
-      animation: fadeIn 0.2s ease-out;
-      z-index: 1000;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      z-index: 100;
     }
   </style>
 </head>
 <body>
-
   <div class="container">
     <header>
-      <div class="badge-bar">
-        <div class="badge-dot"></div>
-        Ubuntu 24.04 LTS · Zero External Dependencies
-      </div>
-      <h1>OpenShip Command Generator</h1>
-      <p class="subtitle">Generate a custom, production-ready 1-click installer command for your OpenShip Control Plane VPS.</p>
+      <div class="badge-bar">Ubuntu 24.04 LTS · Single-Script Provisioning</div>
+      <h1>OpenShip Deploy — Мастер настройки сервера</h1>
+      <p class="hero-desc">
+        Единый инструмент для тюнинга Ubuntu VPS, установки стеков (FrankenPHP/Caddy, MariaDB, Redis, Docker, <code>site-cli</code>), развёртывания панели OpenShip и аудита безопасности (<code>doctor.sh --audit</code>). Настройте шаги слева — готовая команда обновится справа.
+      </p>
     </header>
 
-    <!-- Quick Instruction & cURL links -->
-    <div class="guide-banner">
-      <div class="guide-title">
-        <span>📖</span> Quick Start & Direct Commands
+    <!-- Quick Start Strip -->
+    <div class="guide-grid">
+      <div class="guide-item">
+        <div class="guide-item-header">
+          <span>1. Интерактивный мастер</span>
+          <span class="guide-item-badge">install.sh</span>
+        </div>
+        <div class="guide-code-box">
+          <span class="guide-code" id="cmd-quick">curl -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/install.sh | sudo bash</span>
+          <button class="guide-copy-btn" onclick="copySnippet('cmd-quick')">Copy</button>
+        </div>
+        <div class="guide-item-desc">Запуск на сервере с пошаговым выбором: тюнинг ОС, стеки и панель OpenShip.</div>
       </div>
-      <div class="guide-grid">
-        <div class="guide-item">
-          <div class="guide-item-header">
-            <span>1. Quick Installer (Interactive)</span>
-            <span class="guide-item-badge">Default</span>
-          </div>
-          <div class="guide-code-box">
-            <span class="guide-code" id="cmd-quick">curl -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/install.sh | sudo bash</span>
-            <button class="guide-copy-btn" onclick="copySnippet('cmd-quick')">Copy</button>
-          </div>
-          <div class="guide-item-desc">Interactive wizard on server with automatic system checks, swap, and Caddy.</div>
-        </div>
 
-        <div class="guide-item">
-          <div class="guide-item-header">
-            <span>2. Diagnostics &amp; VPS Security Audit</span>
-            <span class="guide-item-badge">Audit</span>
-          </div>
-          <div class="guide-code-box">
-            <span class="guide-code" id="cmd-doctor">curl -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/doctor.sh | sudo bash -s -- --audit</span>
-            <button class="guide-copy-btn" onclick="copySnippet('cmd-doctor')">Copy</button>
-          </div>
-          <div class="guide-item-desc">Runs VPS security audit (SSH, UFW, exposed DB ports, Fail2ban, updates, SUID, FrankenPHP). Omit <code>--audit</code> for full OpenShip check.</div>
+      <div class="guide-item">
+        <div class="guide-item-header">
+          <span>2. Аудит безопасности VPS</span>
+          <span class="guide-item-badge">doctor.sh --audit</span>
         </div>
+        <div class="guide-code-box">
+          <span class="guide-code" id="cmd-doctor">curl -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/doctor.sh | sudo bash -s -- --audit</span>
+          <button class="guide-copy-btn" onclick="copySnippet('cmd-doctor')">Copy</button>
+        </div>
+        <div class="guide-item-desc">Проверяет SSH, UFW, открытые порты БД, Fail2ban, обновления, SUID и FrankenPHP.</div>
+      </div>
 
-        <div class="guide-item">
-          <div class="guide-item-header">
-            <span>3. Clone & Local Run</span>
-            <span class="guide-item-badge">Manual</span>
-          </div>
-          <div class="guide-code-box">
-            <span class="guide-code" id="cmd-git">git clone https://github.com/HomaEEE/OpenShip-deploy.git &amp;&amp; cd OpenShip-deploy</span>
-            <button class="guide-copy-btn" onclick="copySnippet('cmd-git')">Copy</button>
-          </div>
-          <div class="guide-item-desc">Inspect scripts locally and run <code>sudo ./install.sh --help</code> before executing.</div>
+      <div class="guide-item">
+        <div class="guide-item-header">
+          <span>3. Клонирование репозитория</span>
+          <span class="guide-item-badge">Git</span>
         </div>
+        <div class="guide-code-box">
+          <span class="guide-code" id="cmd-git">git clone https://github.com/HomaEEE/OpenShip-deploy.git &amp;&amp; cd OpenShip-deploy</span>
+          <button class="guide-copy-btn" onclick="copySnippet('cmd-git')">Copy</button>
+        </div>
+        <div class="guide-item-desc">Локальная проверка скриптов перед запуском (<code>sudo ./install.sh --help</code>).</div>
       </div>
     </div>
 
-    <!-- Presets -->
-    <div class="presets-title">⚡ Quick Presets</div>
+    <!-- Quick Presets -->
+    <div class="section-kicker">⚡ Быстрые пресеты</div>
     <div class="preset-grid">
-      <div class="preset-btn active" onclick="applyPreset('bare-cf-flex')">
+      <button type="button" class="preset-btn active" onclick="applyPreset('bare-cf-flex', this)">
         <div class="preset-name">🚀 Control VPS (Bare + Caddy)</div>
-        <div class="preset-desc">Lightweight Node + embedded DB, Caddy proxy, strict isolation (no Docker).</div>
-      </div>
-      <div class="preset-btn" onclick="applyPreset('standard-docker')">
-        <div class="preset-name">🐳 Control VPS (Full Docker)</div>
-        <div class="preset-desc">Standard Docker Compose stack (Postgres + Redis) with Let's Encrypt auto-TLS.</div>
-      </div>
-      <div class="preset-btn" onclick="applyPreset('worker-frankenphp')">
-        <div class="preset-name">⚡ Worker VPS (FrankenPHP)</div>
-        <div class="preset-desc">Tune-only + FrankenPHP (Caddy/PHP) + MariaDB + Redis + site-cli (no OpenShip).</div>
-      </div>
-      <div class="preset-btn" onclick="applyPreset('worker-docker')">
-        <div class="preset-name">📦 Worker VPS (Docker)</div>
-        <div class="preset-desc">Tune-only + OS hardening + Docker Engine &amp; Compose v2 (no OpenShip).</div>
-      </div>
+        <div class="preset-desc">Лёгкий Node + embedded DB, Caddy, без Docker (от 1 GB RAM).</div>
+      </button>
+      <button type="button" class="preset-btn" onclick="applyPreset('standard-docker', this)">
+        <div class="preset-name">🐳 Control VPS (Docker)</div>
+        <div class="preset-desc">Полный стек OpenShip в Docker Compose (Postgres + Redis, 2+ GB RAM).</div>
+      </button>
+      <button type="button" class="preset-btn" onclick="applyPreset('worker-frankenphp', this)">
+        <div class="preset-name">⚡ Worker (FrankenPHP)</div>
+        <div class="preset-desc">Тюнинг + FrankenPHP (Caddy/PHP) + MariaDB + Redis + site-cli.</div>
+      </button>
+      <button type="button" class="preset-btn" onclick="applyPreset('worker-docker', this)">
+        <div class="preset-name">📦 Worker (Docker Host)</div>
+        <div class="preset-desc">Только тюнинг ОС и Docker Engine + Compose v2 без панели.</div>
+      </button>
     </div>
 
-    <!-- Main Workspace -->
     <div class="main-grid">
-      <div class="form-column">
+      <!-- Wizard Column -->
+      <div>
+        <div class="stepper">
+          <button type="button" class="step-pill active" id="pill-step-1" onclick="goToStep(1)">
+            <span class="step-num">1</span><span>Режим</span>
+          </button>
+          <button type="button" class="step-pill" id="pill-step-2" onclick="goToStep(2)">
+            <span class="step-num">2</span><span>Стеки</span>
+          </button>
+          <button type="button" class="step-pill" id="pill-step-3" onclick="goToStep(3)">
+            <span class="step-num">3</span><span>OpenShip</span>
+          </button>
+          <button type="button" class="step-pill" id="pill-step-4" onclick="goToStep(4)">
+            <span class="step-num">4</span><span>Тюнинг</span>
+          </button>
+        </div>
 
-        <!-- Card: Mode & Role -->
-        <div class="card">
+        <!-- Step 1: Mode -->
+        <div class="card step-panel active" id="step-1">
           <div class="card-header">
-            <div class="card-icon">⚙️</div>
-            <div class="card-title">Installation Mode & Runtime</div>
+            <span class="card-icon">⚙️</span>
+            <h2 class="card-title">Шаг 1. Режим и роль сервера</h2>
+          </div>
+          <p class="card-subtitle">Выберите, будет ли этот VPS панелью управления OpenShip или worker-сервером для проектов.</p>
+
+          <div class="radio-card-grid">
+            <label class="radio-card selected" id="card-mode-bare">
+              <input type="radio" name="install_mode" value="bare" checked onchange="updateMode('bare')">
+              <div class="radio-card-title">🚀 Bare Mode</div>
+              <div class="radio-card-desc">Нативный Node + встроенная БД. Экономит RAM (подходит для 1 GB VPS).</div>
+            </label>
+            <label class="radio-card" id="card-mode-standard">
+              <input type="radio" name="install_mode" value="standard" onchange="updateMode('standard')">
+              <div class="radio-card-title">🐳 Standard Docker</div>
+              <div class="radio-card-desc">Панель в Docker Compose (Postgres + Redis). Рекомендуется от 2+ GB RAM.</div>
+            </label>
+            <label class="radio-card" id="card-mode-tune-only">
+              <input type="radio" name="install_mode" value="tune-only" onchange="updateMode('tune-only')">
+              <div class="radio-card-title">🛠️ Tune &amp; Stacks</div>
+              <div class="radio-card-desc">Только тюнинг ОС и выбранные стеки (без панели OpenShip).</div>
+            </label>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">Runtime Mode</label>
-            <div class="radio-card-grid">
-              <label class="radio-card selected" id="card-mode-bare">
-                <input type="radio" name="install_mode" value="bare" checked onchange="updateMode('bare')">
-                <div class="radio-card-title">🚀 Bare Mode (Recommended)</div>
-                <div class="radio-card-desc">Lightweight Node process + embedded DB. Ideal for 512MB–2GB VPS.</div>
-              </label>
-              <label class="radio-card" id="card-mode-standard">
-                <input type="radio" name="install_mode" value="standard" onchange="updateMode('standard')">
-                <div class="radio-card-title">🐳 Standard Docker</div>
-                <div class="radio-card-desc">Full Compose stack (Postgres + Redis). Recommended for 2GB+ RAM.</div>
-              </label>
-              <label class="radio-card" id="card-mode-tune-only">
-                <input type="radio" name="install_mode" value="tune-only" onchange="updateMode('tune-only')">
-                <div class="radio-card-title">🛠️ Tune &amp; Stacks Only</div>
-                <div class="radio-card-desc">OS tuning + FrankenPHP / MariaDB / Redis / Docker (no OpenShip panel).</div>
-              </label>
-            </div>
-          </div>
-
-          <div class="toggle-row" id="card-host-control-row">
-            <div class="toggle-info">
-              <span class="toggle-title">Host Control Terminal</span>
-              <span class="toggle-desc">Allow OpenShip web dashboard to open an SSH terminal to this Control VPS.</span>
+          <div class="toggle-row" id="row-host-control">
+            <div>
+              <span class="toggle-title">Host Control Terminal <span class="flag-tag">--no-host-control</span></span>
+              <span class="toggle-desc">Если выключено, Control VPS изолирован и Docker Engine в Bare+Caddy не устанавливается (экономия ~200 MB RAM).</span>
             </div>
             <label class="switch">
-              <input type="checkbox" id="host_control" checked onchange="updateOutput()">
+              <input type="checkbox" id="host_control" onchange="updateOutput()">
               <span class="slider"></span>
             </label>
           </div>
+
+          <div class="wizard-nav">
+            <button type="button" class="nav-btn" disabled>← Назад</button>
+            <button type="button" class="nav-btn primary" onclick="nextStep()">Далее: Стеки →</button>
+          </div>
         </div>
 
-        <!-- Card: Software Stacks -->
-        <div class="card" id="card-stacks">
+        <!-- Step 2: Stacks -->
+        <div class="card step-panel" id="step-2">
           <div class="card-header">
-            <div class="card-icon">📦</div>
-            <div class="card-title">Software Stacks (Optional)</div>
+            <span class="card-icon">📦</span>
+            <h2 class="card-title">Шаг 2. Программные стеки</h2>
           </div>
+          <p class="card-subtitle">Опциональная установка веб-сервера, БД и утилит сразу после системного тюнинга.</p>
 
           <div class="form-group">
-            <label class="form-label">Stack Preset</label>
+            <label class="form-label">
+              <span>Набор стеков</span>
+              <span class="flag-tag">--stack</span>
+            </label>
             <select id="stack_preset" class="form-select" onchange="updateStackPreset()">
-              <option value="none" selected>None (OS tuning / OpenShip only)</option>
+              <option value="none" selected>Без дополнительных стеков (только тюнинг / OpenShip)</option>
               <option value="frankenphp">Full FrankenPHP Stack (FrankenPHP + MariaDB + Redis + site-cli)</option>
               <option value="docker">Docker Engine &amp; Compose v2</option>
-              <option value="custom">Custom Component Selection</option>
+              <option value="custom">Выборочная установка (--with-*)</option>
             </select>
+            <div class="field-help">Для worker-сервера под PHP/Laravel/WordPress выбирайте <strong>Full FrankenPHP Stack</strong>, под контейнеры — <strong>Docker</strong>.</div>
           </div>
 
           <div id="custom-stack-panel" style="display: none;">
             <div class="toggle-row">
-              <div class="toggle-info">
-                <span class="toggle-title">FrankenPHP (Caddy + PHP)</span>
-                <span class="toggle-desc">Single-binary web server with auto-SSL and embedded PHP.</span>
+              <div>
+                <span class="toggle-title">FrankenPHP (Caddy + PHP) <span class="flag-tag">--with-frankenphp</span></span>
+                <span class="toggle-desc">Один бинарник с авто-SSL (Let's Encrypt), HTTP/3 и встроенным PHP без php-fpm.</span>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="with_frankenphp" onchange="updateOutput()">
-                <span class="slider"></span>
-              </label>
+              <label class="switch"><input type="checkbox" id="with_frankenphp" onchange="updateOutput()"><span class="slider"></span></label>
             </div>
             <div class="toggle-row">
-              <div class="toggle-info">
-                <span class="toggle-title">MariaDB Server &amp; Client</span>
-                <span class="toggle-desc">Relational database bound to 127.0.0.1:3306.</span>
+              <div>
+                <span class="toggle-title">MariaDB Server &amp; Client <span class="flag-tag">--with-mariadb</span></span>
+                <span class="toggle-desc">Локальная БД на 127.0.0.1:3306 (не торчит наружу).</span>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="with_mariadb" onchange="updateOutput()">
-                <span class="slider"></span>
-              </label>
+              <label class="switch"><input type="checkbox" id="with_mariadb" onchange="updateOutput()"><span class="slider"></span></label>
             </div>
             <div class="toggle-row">
-              <div class="toggle-info">
-                <span class="toggle-title">Redis Cache</span>
-                <span class="toggle-desc">In-memory cache &amp; queue bound to 127.0.0.1:6379.</span>
+              <div>
+                <span class="toggle-title">Redis Cache <span class="flag-tag">--with-redis</span></span>
+                <span class="toggle-desc">Кэш и очереди на 127.0.0.1:6379.</span>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="with_redis" onchange="updateOutput()">
-                <span class="slider"></span>
-              </label>
+              <label class="switch"><input type="checkbox" id="with_redis" onchange="updateOutput()"><span class="slider"></span></label>
             </div>
             <div class="toggle-row">
-              <div class="toggle-info">
-                <span class="toggle-title">Docker Engine &amp; Compose v2</span>
-                <span class="toggle-desc">Install Docker runtime for containerized workloads.</span>
+              <div>
+                <span class="toggle-title">Docker Engine &amp; Compose v2 <span class="flag-tag">--with-docker</span></span>
+                <span class="toggle-desc">Официальный Docker CE и плагин Compose v2.</span>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="with_docker" onchange="updateOutput()">
-                <span class="slider"></span>
-              </label>
+              <label class="switch"><input type="checkbox" id="with_docker" onchange="updateOutput()"><span class="slider"></span></label>
             </div>
             <div class="toggle-row">
-              <div class="toggle-info">
-                <span class="toggle-title">site-cli (/usr/local/bin/site-cli)</span>
-                <span class="toggle-desc">CLI manager for FrankenPHP sites, SSL, and MariaDB databases.</span>
+              <div>
+                <span class="toggle-title">site-cli <span class="flag-tag">--with-site-cli</span></span>
+                <span class="toggle-desc">Утилита <code>/usr/local/bin/site-cli</code> для создания сайтов в FrankenPHP/Caddy и БД.</span>
               </div>
-              <label class="switch">
-                <input type="checkbox" id="with_site_cli" onchange="updateOutput()">
-                <span class="slider"></span>
-              </label>
+              <label class="switch"><input type="checkbox" id="with_site_cli" onchange="updateOutput()"><span class="slider"></span></label>
             </div>
           </div>
 
-          <div id="frankenphp-port-warning" class="alert-box" style="display: none; margin-top: 0.75rem;">
-            <strong>⚠️ Port Notice:</strong> OpenShip proxy (Caddy/Edge) owns <code>:80/:443</code>, so FrankenPHP will bind locally to <code>:8080</code>.
+          <div class="toggle-row">
+            <div>
+              <span class="toggle-title">Удалить Apache2 автоматически <span class="flag-tag">--purge-apache</span></span>
+              <span class="toggle-desc">Останавливает и удаляет предустановленный Apache2, чтобы освободить :80/:443 и RAM.</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="purge_apache" checked onchange="updateOutput()"><span class="slider"></span></label>
+          </div>
+
+          <div id="frankenphp-port-warning" class="alert-box" style="display: none;">
+            <strong>⚠️ Порты :80/:443:</strong> OpenShip Proxy (Caddy/Edge) уже занимает <code>:80/:443</code>, поэтому FrankenPHP автоматически поднимется локально на <code>127.0.0.1:8080</code>.
+          </div>
+
+          <div class="wizard-nav">
+            <button type="button" class="nav-btn" onclick="prevStep()">← Назад</button>
+            <button type="button" class="nav-btn primary" onclick="nextStep()">Далее →</button>
           </div>
         </div>
 
-        <!-- Card: Domain & SSL -->
-        <div class="card" id="card-domain-ssl">
+        <!-- Step 3: OpenShip & Domain -->
+        <div class="card step-panel" id="step-3">
           <div class="card-header">
-            <div class="card-icon">🌐</div>
-            <div class="card-title">Domain & SSL Routing</div>
+            <span class="card-icon">🌐</span>
+            <h2 class="card-title">Шаг 3. Домен, Proxy и Администратор OpenShip</h2>
+          </div>
+          <p class="card-subtitle">Настройка публичного доступа к панели и учётной записи администратора.</p>
+
+          <div class="form-group">
+            <label class="form-label"><span>Домен панели</span><span class="flag-tag">--domain</span></label>
+            <input type="text" id="domain" class="form-input" placeholder="os.example.com" value="os.example.com" oninput="updateOutput()">
+            <div class="field-help">DNS A-запись должна указывать на IP этого VPS. Для локального режима оставьте пустым.</div>
+          </div>
+
+          <div class="two-col">
+            <div class="form-group">
+              <label class="form-label"><span>Reverse Proxy</span><span class="flag-tag">--proxy-mode</span></label>
+              <select id="proxy_mode" class="form-select" onchange="updateProxyMode()">
+                <option value="caddy" selected>Caddy (нативный, без Docker)</option>
+                <option value="edge">OpenShip Edge (Docker)</option>
+                <option value="none">None (только локальный :3001)</option>
+              </select>
+              <div class="field-help">Caddy рекомендуется для Bare-режима на малых VPS.</div>
+            </div>
+
+            <div class="form-group" id="group-ssl-mode">
+              <label class="form-label"><span>Режим SSL / TLS</span><span class="flag-tag">--ssl-mode</span></label>
+              <select id="ssl_mode" class="form-select" onchange="updateSSLMode()">
+                <option value="cloudflare_flexible" selected>Cloudflare Flexible (HTTP :80)</option>
+                <option value="auto">Auto Let's Encrypt (ACME)</option>
+                <option value="cloudflare_origin">Cloudflare Origin CA (.crt/.key)</option>
+                <option value="http_ip">Direct IP (HTTP :80)</option>
+              </select>
+              <div class="field-help">Для проксирования через Cloudflare без петель редиректа выбирайте Flexible или Origin CA.</div>
+            </div>
+          </div>
+
+          <div id="origin-ca-panel" style="display: none;">
+            <div class="form-group">
+              <label class="form-label"><span>Origin Certificate (.crt)</span><span class="flag-tag">--origin-cert</span></label>
+              <textarea id="origin_cert" class="form-textarea" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----" oninput="updateOutput()"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label"><span>Origin Private Key (.key)</span><span class="flag-tag">--origin-key</span></label>
+              <textarea id="origin_key" class="form-textarea" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----" oninput="updateOutput()"></textarea>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="form-group">
+              <label class="form-label"><span>Имя админа</span><span class="flag-tag">--admin-name</span></label>
+              <input type="text" id="admin_name" class="form-input" value="Admin" oninput="updateOutput()">
+            </div>
+            <div class="form-group">
+              <label class="form-label"><span>Email админа</span><span class="flag-tag">--admin-email</span></label>
+              <input type="email" id="admin_email" class="form-input" value="admin@example.com" oninput="updateOutput()">
+            </div>
           </div>
 
           <div class="form-group">
             <label class="form-label">
-              <span>Domain / Hostname</span>
-              <span class="req">Required for public access</span>
+              <span>Пароль админа <span class="flag-tag">--admin-password</span></span>
+              <button type="button" class="btn-action" onclick="generatePassword()">🎲 Сгенерировать</button>
             </label>
-            <input type="text" id="domain" class="form-input" placeholder="os.example.com" value="os.example.com" oninput="updateOutput()">
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Reverse Proxy Engine</label>
-            <select id="proxy_mode" class="form-select" onchange="updateProxyMode()">
-              <option value="caddy" selected>Caddy Reverse Proxy (Native, HTTP/3, Recommended)</option>
-              <option value="edge">OpenShip Edge (Docker Container)</option>
-              <option value="none">None / Private (Port 3001 only, no proxy)</option>
-            </select>
-          </div>
-
-          <div class="form-group" id="group-ssl-mode">
-            <label class="form-label">SSL / TLS Termination</label>
-            <select id="ssl_mode" class="form-select" onchange="updateSSLMode()">
-              <option value="cloudflare_flexible" selected>Cloudflare Flexible (HTTP :80 on server, zero SSL loops)</option>
-              <option value="auto">Automatic Let's Encrypt / ZeroSSL (ACME HTTP-01)</option>
-              <option value="cloudflare_origin">Cloudflare Origin CA Certificate (Paste .crt & .key)</option>
-              <option value="http_ip">Direct Server IP (HTTP :80 only)</option>
-            </select>
-          </div>
-
-          <!-- Origin CA Inputs (conditional) -->
-          <div id="origin-ca-panel" style="display: none;">
-            <div class="form-group">
-              <label class="form-label">Origin Certificate (.crt PEM)</label>
-              <textarea id="origin_cert" class="form-textarea" placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----" oninput="updateOutput()"></textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Origin Private Key (.key PEM)</label>
-              <textarea id="origin_key" class="form-textarea" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----" oninput="updateOutput()"></textarea>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card: Admin Credentials -->
-        <div class="card" id="card-admin-creds">
-          <div class="card-header">
-            <div class="card-icon">🔑</div>
-            <div class="card-title">OpenShip Administrator</div>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Admin Name</label>
-            <input type="text" id="admin_name" class="form-input" value="Admin" oninput="updateOutput()">
-          </div>
-
-          <div class="form-group">
-            <label class="form-label">Admin Email</label>
-            <input type="email" id="admin_email" class="form-input" value="admin@example.com" oninput="updateOutput()">
-          </div>
-
-          <div class="form-group">
-            <div class="form-label">
-              <span>Admin Password</span>
-              <button type="button" class="btn-action" onclick="generatePassword()">🎲 Generate Secure</button>
-            </div>
             <input type="text" id="admin_password" class="form-input" value="Sh!pP@ssw0rd2026" oninput="updateOutput()">
+            <div class="field-help">Минимум 8 символов; передаётся только при первом запуске панели.</div>
+          </div>
+
+          <div class="wizard-nav">
+            <button type="button" class="nav-btn" onclick="prevStep()">← Назад</button>
+            <button type="button" class="nav-btn primary" onclick="nextStep()">Далее: Тюнинг →</button>
           </div>
         </div>
 
-        <!-- Card: Server OS & Hardening -->
-        <div class="card">
+        <!-- Step 4: Tuning & Security -->
+        <div class="card step-panel" id="step-4">
           <div class="card-header">
-            <div class="card-icon">🛡️</div>
-            <div class="card-title">Host Tuning & Security</div>
+            <span class="card-icon">🛡️</span>
+            <h2 class="card-title">Шаг 4. Тюнинг ОС и безопасность</h2>
           </div>
+          <p class="card-subtitle">Параметры ядра, swap, SSH, firewall и защиты от перебора паролей.</p>
 
-          <div class="radio-card-grid" style="margin-bottom: 1rem;">
-            <div class="form-group" style="margin: 0;">
-              <label class="form-label">Server Hostname</label>
+          <div class="two-col">
+            <div class="form-group">
+              <label class="form-label"><span>Hostname</span><span class="flag-tag">--hostname</span></label>
               <input type="text" id="hostname" class="form-input" value="openship-control" oninput="updateOutput()">
+              <div class="field-help">Системное имя сервера (<code>hostnamectl</code>).</div>
             </div>
-            <div class="form-group" style="margin: 0;">
-              <div class="form-label">
-                <span>Timezone</span>
-                <button type="button" class="btn-action" onclick="detectTimezone()">📍 Detect</button>
-              </div>
+            <div class="form-group">
+              <label class="form-label">
+                <span>Timezone <span class="flag-tag">--timezone</span></span>
+                <button type="button" class="btn-action" onclick="detectTimezone()">📍 Авто</button>
+              </label>
               <input type="text" id="timezone" class="form-input" value="UTC" oninput="updateOutput()">
+              <div class="field-help">Часовой пояс для логов и cron (например, <code>Europe/Kyiv</code>).</div>
             </div>
           </div>
 
-          <div class="radio-card-grid" style="margin-bottom: 1rem;">
-            <div class="form-group" style="margin: 0;">
-              <label class="form-label">SSH Port</label>
+          <div class="two-col">
+            <div class="form-group">
+              <label class="form-label"><span>SSH Порт</span><span class="flag-tag">--ssh-port</span></label>
               <input type="number" id="ssh_port" class="form-input" value="22" oninput="updateOutput()">
+              <div class="field-help">Автоматически открывается в UFW и прописывается в Fail2ban.</div>
             </div>
-            <div class="form-group" style="margin: 0;">
-              <label class="form-label">Linux Admin User</label>
+            <div class="form-group">
+              <label class="form-label"><span>Linux Admin User</span><span class="flag-tag">--admin-user</span></label>
               <input type="text" id="admin_user" class="form-input" value="openship" oninput="updateOutput()">
+              <div class="field-help">Пользователь с sudo-правами для SSH-доступа.</div>
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label">Swapfile Size</label>
+            <label class="form-label"><span>Публичный SSH-ключ (опционально)</span><span class="flag-tag">--ssh-key</span></label>
+            <input type="text" id="ssh_key" class="form-input" placeholder="ssh-ed25519 AAAA..." oninput="updateOutput()">
+            <div class="field-help">Если указан, добавляется в <code>authorized_keys</code> и включает вход только по ключу.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label"><span>Размер Swapfile</span><span class="flag-tag">--swap-size</span></label>
             <select id="swap_size" class="form-select" onchange="updateOutput()">
-              <option value="2" selected>2 GB (Hybrid: zRAM 50% + 2GB disk swap)</option>
-              <option value="4">4 GB (Recommended for 2GB+ servers)</option>
-              <option value="1">1 GB (Low disk space)</option>
-              <option value="0">0 GB (Disable disk swapfile, keep zRAM)</option>
+              <option value="2" selected>2 GB (Гибрид: zRAM 50% + 2 GB /swapfile)</option>
+              <option value="4">4 GB (Для серверов 2+ GB RAM)</option>
+              <option value="1">1 GB (При малом диске)</option>
+              <option value="0">0 GB — отключить дисковый swap (--disable-swap)</option>
             </select>
+            <div class="field-help">Защищает Node.js/сборки от OOM-kill при нехватке RAM.</div>
           </div>
 
           <div class="toggle-row">
-            <div class="toggle-info">
-              <span class="toggle-title">UFW Firewall</span>
-              <span class="toggle-desc">Opens SSH (:22), HTTP (:80), HTTPS (:443 tcp/udp), blocks internal ports :3001 & :4000.</span>
+            <div>
+              <span class="toggle-title">UFW Firewall <span class="flag-tag">--disable-ufw</span></span>
+              <span class="toggle-desc">Разрешает только SSH, :80 и :443; закрывает :3001, :4000, :3306, :6379 снаружи.</span>
             </div>
-            <label class="switch">
-              <input type="checkbox" id="enable_ufw" checked onchange="updateOutput()">
-              <span class="slider"></span>
-            </label>
+            <label class="switch"><input type="checkbox" id="enable_ufw" checked onchange="updateOutput()"><span class="slider"></span></label>
           </div>
 
           <div class="toggle-row">
-            <div class="toggle-info">
-              <span class="toggle-title">Fail2ban SSH Protection</span>
-              <span class="toggle-desc">Automatic IP ban after repeated failed authentication attempts.</span>
+            <div>
+              <span class="toggle-title">Fail2ban SSH Protection <span class="flag-tag">--disable-fail2ban</span></span>
+              <span class="toggle-desc">Автобан IP после серии неудачных попыток входа по SSH.</span>
             </div>
-            <label class="switch">
-              <input type="checkbox" id="enable_fail2ban" checked onchange="updateOutput()">
-              <span class="slider"></span>
-            </label>
+            <label class="switch"><input type="checkbox" id="enable_fail2ban" checked onchange="updateOutput()"><span class="slider"></span></label>
+          </div>
+
+          <div class="wizard-nav">
+            <button type="button" class="nav-btn" onclick="prevStep()">← Назад</button>
+            <button type="button" class="nav-btn primary" onclick="copyCommand()">📋 Скопировать команду</button>
           </div>
         </div>
-
       </div>
 
       <!-- Output Column -->
-      <div class="output-column">
-        <div class="output-panel">
-          
-          <div class="terminal-card">
-            <div class="terminal-header">
-              <div class="terminal-dots">
-                <div class="dot dot-red"></div>
-                <div class="dot dot-yellow"></div>
-                <div class="dot dot-green"></div>
-              </div>
-              <div class="terminal-tabs">
-                <button class="term-tab active" id="tab-curl" onclick="switchTab('curl')">curl 1-liner</button>
-                <button class="term-tab" id="tab-local" onclick="switchTab('local')">local script</button>
-                <button class="term-tab" id="tab-env" onclick="switchTab('env')">env vars</button>
-              </div>
+      <div class="output-panel">
+        <div class="summary-strip" id="summary-strip"></div>
+
+        <div class="terminal-card">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <div class="dot dot-red"></div>
+              <div class="dot dot-yellow"></div>
+              <div class="dot dot-green"></div>
             </div>
-
-            <div class="terminal-body" id="command-output"></div>
-
-            <div class="terminal-footer">
-              <button class="copy-btn" onclick="copyCommand()">
-                <span id="copy-icon">📋</span>
-                <span id="copy-text">Copy Installer Command</span>
-              </button>
+            <div class="terminal-tabs">
+              <button type="button" class="term-tab active" id="tab-curl" onclick="switchTab('curl')">curl 1-liner</button>
+              <button type="button" class="term-tab" id="tab-local" onclick="switchTab('local')">local script</button>
+              <button type="button" class="term-tab" id="tab-env" onclick="switchTab('env')">env vars</button>
+              <button type="button" class="term-tab" id="tab-audit" onclick="switchTab('audit')">audit</button>
             </div>
           </div>
 
-          <div class="quick-switches">
-            <label class="pill-checkbox">
-              <input type="checkbox" id="flag_non_interactive" checked onchange="updateOutput()">
-              <span>--non-interactive</span>
-            </label>
-            <label class="pill-checkbox">
-              <input type="checkbox" id="flag_dry_run" onchange="updateOutput()">
-              <span>--dry-run (test only)</span>
-            </label>
-          </div>
+          <div class="terminal-body" id="command-output"></div>
 
-          <div class="alert-box">
-            <strong>💡 Pro-Tip for Cloudflare:</strong>
-            When using <code>cloudflare_flexible</code>, set SSL/TLS mode in Cloudflare to <em>Flexible</em>. Caddy will terminate HTTP on port :80 without requiring origin certs, eliminating 502/525 handshake errors.
+          <div class="terminal-footer">
+            <button type="button" class="copy-btn" onclick="copyCommand()">
+              <span>📋</span>
+              <span id="copy-text">Скопировать команду</span>
+            </button>
           </div>
+        </div>
 
+        <div class="quick-switches">
+          <label class="pill-checkbox">
+            <input type="checkbox" id="flag_non_interactive" checked onchange="updateOutput()">
+            <span>--non-interactive</span>
+          </label>
+          <label class="pill-checkbox">
+            <input type="checkbox" id="flag_dry_run" onchange="updateOutput()">
+            <span>--dry-run (проверка)</span>
+          </label>
+        </div>
+
+        <div class="alert-box info">
+          <strong>💡 Совет:</strong> После установки запустите <code>sudo ./doctor.sh --audit</code> (вкладка <em>audit</em>) для проверки SSH, firewall, портов БД и SUID-бинарников.
         </div>
       </div>
     </div>
 
-    <!-- Footer -->
+    <!-- Collapsible Reference -->
+    <section class="ref-section">
+      <details class="ref-card">
+        <summary>📚 Справочник параметров: <code>install.sh</code>, <code>site-cli</code> и <code>doctor.sh --audit</code></summary>
+        <div class="ref-grid">
+          <div>
+            <h4>install.sh (основные флаги)</h4>
+            <ul>
+              <li><code>--mode=bare|standard|tune-only</code> — выбор режима</li>
+              <li><code>--tune-only</code> — только тюнинг и стеки без OpenShip</li>
+              <li><code>--stack=frankenphp|docker|custom|none</code> — пресет стека</li>
+              <li><code>--with-frankenphp / --with-mariadb / --with-redis / --with-docker / --with-site-cli</code></li>
+              <li><code>--no-host-control</code> — изоляция Control VPS (без Docker в Bare+Caddy)</li>
+              <li><code>--purge-apache</code> — автоудаление Apache2</li>
+            </ul>
+          </div>
+          <div>
+            <h4>site-cli (FrankenPHP / Caddy)</h4>
+            <ul>
+              <li><code>site-cli create site.com --template=laravel --ssl</code></li>
+              <li><code>--template=</code> <code>opencart</code>, <code>wordpress</code>, <code>laravel</code>, <code>php</code>, <code>static</code>, <code>proxy</code></li>
+              <li><code>site-cli list</code> — список сайтов в <code>/etc/frankenphp/sites.d</code></li>
+              <li><code>site-cli ssl site.com</code> — включение авто-TLS</li>
+              <li><code>site-cli db site.com [create|dump|drop]</code></li>
+              <li><code>site-cli delete site.com --with-db</code></li>
+            </ul>
+          </div>
+          <div>
+            <h4>doctor.sh --audit</h4>
+            <ul>
+              <li><code>PermitRootLogin</code>, <code>PasswordAuthentication</code>, порт SSH</li>
+              <li>UFW/nftables и открытые порты БД (<code>3306/5432/6379/27017</code>)</li>
+              <li>Fail2ban <code>sshd</code> jail и совпадение порта с <code>sshd -T</code></li>
+              <li>Неудачные входы за 24ч и security-обновления <code>apt</code></li>
+              <li>Аккаунты с <code>UID 0</code>, sudo-логирование, политика паролей, SUID</li>
+              <li><code>--report /path/report.txt</code> — экспорт отчёта</li>
+            </ul>
+          </div>
+        </div>
+      </details>
+    </section>
+
     <footer>
-      <div>OpenShip Control Plane Automated Provisioning Toolkit · Ubuntu 24.04 LTS</div>
+      <div>OpenShip Deploy Toolkit · Ubuntu 24.04 LTS</div>
       <div>
         <a href="https://github.com/HomaEEE/OpenShip-deploy" target="_blank" rel="noopener">GitHub Repository</a>
         &nbsp;·&nbsp;
         <a href="https://openship.io" target="_blank" rel="noopener">OpenShip.io</a>
         &nbsp;·&nbsp;
-        <a href="javascript:void(0)" onclick="clearFormCache()" style="opacity: 0.7;">Clear Saved Cache</a>
+        <a href="javascript:void(0)" onclick="clearFormCache()">Сбросить кэш формы</a>
       </div>
     </footer>
   </div>
 
-  <div class="toast" id="toast">✔ Command copied to clipboard!</div>
+  <div class="toast" id="toast">✔ Скопировано в буфер обмена!</div>
 
   <script>
     let activeTab = 'curl';
+    let currentStep = 1;
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function getMode() {
+      return document.querySelector('input[name="install_mode"]:checked').value;
+    }
+
+    function goToStep(step) {
+      const mode = getMode();
+      if (mode === 'tune-only' && step === 3) return;
+      currentStep = step;
+      document.querySelectorAll('.step-panel').forEach(el => el.classList.remove('active'));
+      document.getElementById('step-' + step).classList.add('active');
+      updateStepperUI();
+      saveFormCache();
+    }
+
+    function nextStep() {
+      const mode = getMode();
+      if (currentStep === 2 && mode === 'tune-only') {
+        goToStep(4);
+      } else if (currentStep < 4) {
+        goToStep(currentStep + 1);
+      }
+    }
+
+    function prevStep() {
+      const mode = getMode();
+      if (currentStep === 4 && mode === 'tune-only') {
+        goToStep(2);
+      } else if (currentStep > 1) {
+        goToStep(currentStep - 1);
+      }
+    }
+
+    function updateStepperUI() {
+      const mode = getMode();
+      [1, 2, 3, 4].forEach(n => {
+        const pill = document.getElementById('pill-step-' + n);
+        pill.classList.remove('active', 'done', 'disabled');
+        if (mode === 'tune-only' && n === 3) {
+          pill.classList.add('disabled');
+        } else if (n === currentStep) {
+          pill.classList.add('active');
+        } else if (n < currentStep) {
+          pill.classList.add('done');
+        }
+      });
+    }
 
     function updateMode(mode) {
       document.querySelectorAll('input[name="install_mode"]').forEach(r => {
         r.closest('.radio-card').classList.toggle('selected', r.value === mode);
       });
       const isTuneOnly = (mode === 'tune-only');
-      document.getElementById('card-host-control-row').style.display = isTuneOnly ? 'none' : 'flex';
-      document.getElementById('card-domain-ssl').style.display = isTuneOnly ? 'none' : 'block';
-      document.getElementById('card-admin-creds').style.display = isTuneOnly ? 'none' : 'block';
+      document.getElementById('row-host-control').style.display = isTuneOnly ? 'none' : 'flex';
+      if (isTuneOnly && currentStep === 3) {
+        goToStep(4);
+      }
+      updateStepperUI();
       updateOutput();
     }
 
@@ -1149,8 +1125,7 @@
 
     function updateSSLMode() {
       const mode = document.getElementById('ssl_mode').value;
-      const originPanel = document.getElementById('origin-ca-panel');
-      originPanel.style.display = (mode === 'cloudflare_origin') ? 'block' : 'none';
+      document.getElementById('origin-ca-panel').style.display = (mode === 'cloudflare_origin') ? 'block' : 'none';
       updateOutput();
     }
 
@@ -1176,11 +1151,9 @@
       }
     }
 
-    function applyPreset(preset) {
+    function applyPreset(preset, btnEl) {
       document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
-      if (typeof event !== 'undefined' && event.currentTarget) {
-        event.currentTarget.classList.add('active');
-      }
+      if (btnEl) btnEl.classList.add('active');
 
       if (preset === 'bare-cf-flex') {
         document.querySelector('input[name="install_mode"][value="bare"]').checked = true;
@@ -1220,8 +1193,14 @@
       updateOutput();
     }
 
+    function formatFlagHtml(flag) {
+      const idx = flag.indexOf('=');
+      if (idx === -1) return `<span class="cmd-flag">${escapeHtml(flag)}</span>`;
+      return `<span class="cmd-flag">${escapeHtml(flag.slice(0, idx))}</span>=<span class="cmd-val">${escapeHtml(flag.slice(idx + 1))}</span>`;
+    }
+
     function updateOutput() {
-      const mode = document.querySelector('input[name="install_mode"]:checked').value;
+      const mode = getMode();
       const isTuneOnly = (mode === 'tune-only');
       const hostControl = document.getElementById('host_control').checked;
       const domain = document.getElementById('domain').value.trim();
@@ -1240,8 +1219,10 @@
       const withRedis = document.getElementById('with_redis').checked;
       const withDocker = document.getElementById('with_docker').checked;
       const withSiteCli = document.getElementById('with_site_cli').checked;
+      const purgeApache = document.getElementById('purge_apache').checked;
 
       const usesFrankenphp = (stackPreset === 'frankenphp') || (stackPreset === 'custom' && withFrankenphp);
+      const usesDockerStack = (stackPreset === 'docker') || (stackPreset === 'custom' && withDocker);
       document.getElementById('frankenphp-port-warning').style.display =
         (!isTuneOnly && proxyMode !== 'none' && usesFrankenphp) ? 'block' : 'none';
 
@@ -1249,6 +1230,7 @@
       const timezone = document.getElementById('timezone').value.trim();
       const sshPort = document.getElementById('ssh_port').value.trim();
       const adminUser = document.getElementById('admin_user').value.trim();
+      const sshKey = document.getElementById('ssh_key').value.trim();
       const swapSize = document.getElementById('swap_size').value;
       const enableUfw = document.getElementById('enable_ufw').checked;
       const enableFail2ban = document.getElementById('enable_fail2ban').checked;
@@ -1267,7 +1249,6 @@
         if (proxyMode !== 'none') flags.push(`--ssl-mode=${sslMode}`);
         if (originCert) flags.push(`--origin-cert="${originCert.replace(/\n/g, '\\n')}"`);
         if (originKey) flags.push(`--origin-key="${originKey.replace(/\n/g, '\\n')}"`);
-
         if (adminName && adminName !== 'Admin') flags.push(`--admin-name="${adminName}"`);
         if (adminEmail) flags.push(`--admin-email="${adminEmail}"`);
         if (adminPassword) flags.push(`--admin-password="${adminPassword}"`);
@@ -1282,32 +1263,50 @@
         if (withDocker) flags.push(`--with-docker`);
         if (withSiteCli) flags.push(`--with-site-cli`);
       }
+      if (purgeApache) flags.push(`--purge-apache`);
 
       if (hostname && hostname !== 'openship-control') flags.push(`--hostname=${hostname}`);
       if (timezone && timezone !== 'UTC') flags.push(`--timezone=${timezone}`);
       if (sshPort && sshPort !== '22') flags.push(`--ssh-port=${sshPort}`);
       if (adminUser && adminUser !== 'openship') flags.push(`--admin-user=${adminUser}`);
-      if (swapSize !== '2') flags.push(`--swap-size=${swapSize}`);
+      if (sshKey) flags.push(`--ssh-key="${sshKey}"`);
+      if (swapSize === '0') {
+        flags.push(`--disable-swap`);
+      } else if (swapSize !== '2') {
+        flags.push(`--swap-size=${swapSize}`);
+      }
       if (!enableUfw) flags.push(`--disable-ufw`);
       if (!enableFail2ban) flags.push(`--disable-fail2ban`);
       if (isNonInteractive) flags.push(`--non-interactive`);
       if (isDryRun) flags.push(`--dry-run`);
 
+      const dockerUsed = (mode === 'standard') || (!isTuneOnly && (hostControl || proxyMode === 'edge')) || usesDockerStack;
+      const chips = [
+        `Режим: <strong>${escapeHtml(mode)}</strong>`,
+        `Docker: <strong>${dockerUsed ? 'Да' : 'Нет (Без Docker)'}</strong>`,
+        `Стек: <strong>${escapeHtml(stackPreset)}</strong>`,
+        `Swap: <strong>${swapSize === '0' ? 'zRAM only' : escapeHtml(swapSize) + ' GB'}</strong>`
+      ];
+      document.getElementById('summary-strip').innerHTML = chips.map(c => `<span class="summary-chip">${c}</span>`).join('');
+
       let cmd = '';
       if (activeTab === 'curl') {
         cmd = `<span class="cmd-prefix">curl</span> -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/install.sh <span class="cmd-pipe">|</span> <span class="cmd-prefix">sudo bash</span> -s -- \\\n  ` +
-          flags.map(f => `<span class="cmd-flag">${f.split('=')[0]}</span>` + (f.includes('=') ? `=<span class="cmd-val">${f.slice(f.indexOf('=') + 1)}</span>` : '')).join(' \\\n  ');
+          flags.map(formatFlagHtml).join(' \\\n  ');
       } else if (activeTab === 'local') {
         cmd = `<span class="cmd-prefix">sudo ./install.sh</span> \\\n  ` +
-          flags.map(f => `<span class="cmd-flag">${f.split('=')[0]}</span>` + (f.includes('=') ? `=<span class="cmd-val">${f.slice(f.indexOf('=') + 1)}</span>` : '')).join(' \\\n  ');
+          flags.map(formatFlagHtml).join(' \\\n  ');
+      } else if (activeTab === 'audit') {
+        cmd = `<span class="cmd-prefix">curl</span> -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/doctor.sh <span class="cmd-pipe">|</span> <span class="cmd-prefix">sudo bash</span> -s -- <span class="cmd-flag">--audit</span>`;
       } else {
         const envs = [
-          `OPENSHIP_ADMIN_PASSWORD="${adminPassword}"`,
-          `OPENSHIP_ADMIN_EMAIL="${adminEmail}"`,
-          domain ? `OPENSHIP_HOST="${domain}"` : null,
-          `INSTALL_MODE="${mode}"`,
+          `INSTALL_MODE="${escapeHtml(mode)}"`,
+          !isTuneOnly && adminPassword ? `OPENSHIP_ADMIN_PASSWORD="${escapeHtml(adminPassword)}"` : null,
+          !isTuneOnly && adminEmail ? `OPENSHIP_ADMIN_EMAIL="${escapeHtml(adminEmail)}"` : null,
+          !isTuneOnly && domain ? `OPENSHIP_HOST="${escapeHtml(domain)}"` : null,
+          stackPreset !== 'none' ? `CLI_STACK_CHOICE="${escapeHtml(stackPreset)}"` : null
         ].filter(Boolean);
-        cmd = envs.join('\n') + `\n\n<span class="cmd-prefix">curl</span> -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/install.sh <span class="cmd-pipe">|</span> <span class="cmd-prefix">sudo bash</span> -s -- --non-interactive`;
+        cmd = envs.join('\n') + `\n\n<span class="cmd-prefix">curl</span> -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/install.sh <span class="cmd-pipe">|</span> <span class="cmd-prefix">sudo bash</span> -s -- <span class="cmd-flag">--non-interactive</span>`;
       }
 
       document.getElementById('command-output').innerHTML = cmd;
@@ -1315,16 +1314,14 @@
     }
 
     function copyCommand() {
-      const container = document.getElementById('command-output');
-      const text = container.innerText;
+      const text = document.getElementById('command-output').innerText;
       navigator.clipboard.writeText(text).then(() => {
         const toast = document.getElementById('toast');
         toast.style.display = 'block';
         setTimeout(() => { toast.style.display = 'none'; }, 2200);
-
         const btnText = document.getElementById('copy-text');
-        btnText.innerText = 'Copied!';
-        setTimeout(() => { btnText.innerText = 'Copy Installer Command'; }, 2000);
+        btnText.innerText = 'Скопировано!';
+        setTimeout(() => { btnText.innerText = 'Скопировать команду'; }, 1800);
       });
     }
 
@@ -1333,21 +1330,29 @@
       const text = el.innerText || el.textContent;
       navigator.clipboard.writeText(text).then(() => {
         const toast = document.getElementById('toast');
-        toast.innerText = '✔ Snippet copied to clipboard!';
         toast.style.display = 'block';
-        setTimeout(() => { toast.style.display = 'none'; toast.innerText = '✔ Command copied to clipboard!'; }, 2200);
+        setTimeout(() => { toast.style.display = 'none'; }, 2200);
       });
     }
 
-    const CACHE_KEY = 'openship_installer_cache';
-    const CACHE_TTL_MS = 10 * 60 * 60 * 1000; // 10 hours
+    const CACHE_KEY = 'openship_wizard_cache_v2';
+    const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
     function saveFormCache() {
       try {
         const data = {
           timestamp: Date.now(),
-          mode: document.querySelector('input[name="install_mode"]:checked')?.value || 'bare',
+          currentStep,
+          activeTab,
+          mode: getMode(),
           hostControl: document.getElementById('host_control').checked,
+          stackPreset: document.getElementById('stack_preset').value,
+          withFrankenphp: document.getElementById('with_frankenphp').checked,
+          withMariadb: document.getElementById('with_mariadb').checked,
+          withRedis: document.getElementById('with_redis').checked,
+          withDocker: document.getElementById('with_docker').checked,
+          withSiteCli: document.getElementById('with_site_cli').checked,
+          purgeApache: document.getElementById('purge_apache').checked,
           domain: document.getElementById('domain').value,
           proxyMode: document.getElementById('proxy_mode').value,
           sslMode: document.getElementById('ssl_mode').value,
@@ -1356,22 +1361,16 @@
           adminName: document.getElementById('admin_name').value,
           adminEmail: document.getElementById('admin_email').value,
           adminPassword: document.getElementById('admin_password').value,
-          stackPreset: document.getElementById('stack_preset').value,
-          withFrankenphp: document.getElementById('with_frankenphp').checked,
-          withMariadb: document.getElementById('with_mariadb').checked,
-          withRedis: document.getElementById('with_redis').checked,
-          withDocker: document.getElementById('with_docker').checked,
-          withSiteCli: document.getElementById('with_site_cli').checked,
           hostname: document.getElementById('hostname').value,
           timezone: document.getElementById('timezone').value,
           sshPort: document.getElementById('ssh_port').value,
           adminUser: document.getElementById('admin_user').value,
+          sshKey: document.getElementById('ssh_key').value,
           swapSize: document.getElementById('swap_size').value,
           enableUfw: document.getElementById('enable_ufw').checked,
           enableFail2ban: document.getElementById('enable_fail2ban').checked,
           nonInteractive: document.getElementById('flag_non_interactive').checked,
-          dryRun: document.getElementById('flag_dry_run').checked,
-          activeTab: activeTab
+          dryRun: document.getElementById('flag_dry_run').checked
         };
         localStorage.setItem(CACHE_KEY, JSON.stringify(data));
       } catch (e) {
@@ -1388,51 +1387,44 @@
           localStorage.removeItem(CACHE_KEY);
           return;
         }
-
         if (data.mode) {
-          const radio = document.querySelector(`input[name="install_mode"][value="${data.mode}"]`);
-          if (radio) {
-            radio.checked = true;
-            updateMode(data.mode);
-          }
+          const r = document.querySelector(`input[name="install_mode"][value="${data.mode}"]`);
+          if (r) { r.checked = true; updateMode(data.mode); }
         }
         if (typeof data.hostControl === 'boolean') document.getElementById('host_control').checked = data.hostControl;
-        if (data.domain !== undefined) document.getElementById('domain').value = data.domain;
-        if (data.proxyMode !== undefined) document.getElementById('proxy_mode').value = data.proxyMode;
-        if (data.sslMode !== undefined) document.getElementById('ssl_mode').value = data.sslMode;
-        if (data.originCert !== undefined) document.getElementById('origin_cert').value = data.originCert;
-        if (data.originKey !== undefined) document.getElementById('origin_key').value = data.originKey;
-
-        if (data.adminName !== undefined) document.getElementById('admin_name').value = data.adminName;
-        if (data.adminEmail !== undefined) document.getElementById('admin_email').value = data.adminEmail;
-        if (data.adminPassword !== undefined) document.getElementById('admin_password').value = data.adminPassword;
-
         if (data.stackPreset !== undefined) document.getElementById('stack_preset').value = data.stackPreset;
         if (typeof data.withFrankenphp === 'boolean') document.getElementById('with_frankenphp').checked = data.withFrankenphp;
         if (typeof data.withMariadb === 'boolean') document.getElementById('with_mariadb').checked = data.withMariadb;
         if (typeof data.withRedis === 'boolean') document.getElementById('with_redis').checked = data.withRedis;
         if (typeof data.withDocker === 'boolean') document.getElementById('with_docker').checked = data.withDocker;
         if (typeof data.withSiteCli === 'boolean') document.getElementById('with_site_cli').checked = data.withSiteCli;
-        updateStackPreset();
-
+        if (typeof data.purgeApache === 'boolean') document.getElementById('purge_apache').checked = data.purgeApache;
+        if (data.domain !== undefined) document.getElementById('domain').value = data.domain;
+        if (data.proxyMode !== undefined) document.getElementById('proxy_mode').value = data.proxyMode;
+        if (data.sslMode !== undefined) document.getElementById('ssl_mode').value = data.sslMode;
+        if (data.originCert !== undefined) document.getElementById('origin_cert').value = data.originCert;
+        if (data.originKey !== undefined) document.getElementById('origin_key').value = data.originKey;
+        if (data.adminName !== undefined) document.getElementById('admin_name').value = data.adminName;
+        if (data.adminEmail !== undefined) document.getElementById('admin_email').value = data.adminEmail;
+        if (data.adminPassword !== undefined) document.getElementById('admin_password').value = data.adminPassword;
         if (data.hostname !== undefined) document.getElementById('hostname').value = data.hostname;
         if (data.timezone !== undefined) document.getElementById('timezone').value = data.timezone;
         if (data.sshPort !== undefined) document.getElementById('ssh_port').value = data.sshPort;
         if (data.adminUser !== undefined) document.getElementById('admin_user').value = data.adminUser;
+        if (data.sshKey !== undefined) document.getElementById('ssh_key').value = data.sshKey;
         if (data.swapSize !== undefined) document.getElementById('swap_size').value = data.swapSize;
         if (typeof data.enableUfw === 'boolean') document.getElementById('enable_ufw').checked = data.enableUfw;
         if (typeof data.enableFail2ban === 'boolean') document.getElementById('enable_fail2ban').checked = data.enableFail2ban;
-
         if (typeof data.nonInteractive === 'boolean') document.getElementById('flag_non_interactive').checked = data.nonInteractive;
         if (typeof data.dryRun === 'boolean') document.getElementById('flag_dry_run').checked = data.dryRun;
-
         if (data.activeTab) {
           activeTab = data.activeTab;
           document.querySelectorAll('.term-tab').forEach(b => b.classList.remove('active'));
-          const activeBtn = document.getElementById('tab-' + activeTab);
-          if (activeBtn) activeBtn.classList.add('active');
+          const tabEl = document.getElementById('tab-' + activeTab);
+          if (tabEl) tabEl.classList.add('active');
         }
-
+        if (data.currentStep) goToStep(data.currentStep);
+        updateStackPreset();
         updateProxyMode();
       } catch (e) {
         console.warn('LocalStorage restore failed:', e);
@@ -1441,15 +1433,9 @@
 
     function clearFormCache() {
       localStorage.removeItem(CACHE_KEY);
-      const toast = document.getElementById('toast');
-      toast.innerText = '✔ Cache cleared! Reloading defaults...';
-      toast.style.display = 'block';
-      setTimeout(() => {
-        location.reload();
-      }, 800);
+      location.reload();
     }
 
-    // Init
     loadFormCache();
     updateOutput();
   </script>
