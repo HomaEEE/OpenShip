@@ -88,7 +88,7 @@ configure_environment() {
     redis_pass="$(grep -E '^REDIS_PASSWORD=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || true)"
     maria_pool="$(grep -E '^MARIADB_BUFFER_POOL_SIZE=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo "${MARIADB_BUFFER_POOL_SIZE}")"
     php_ver="$(grep -E '^PHP_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '8.4')"
-    pma_ver="$(grep -E '^PHPMYADMIN_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '5.2.2')"
+    pma_ver="$(grep -E '^PHPMYADMIN_VERSION=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'latest')"
     pma_limit="$(grep -E '^PHPMYADMIN_MEMORY_LIMIT=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo '128M')"
     redis_policy="$(grep -E '^REDIS_MAXMEMORY_POLICY=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'allkeys-lru')"
     enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo "${ENABLE_PHPMYADMIN:-true}")"
@@ -97,7 +97,7 @@ configure_environment() {
     [[ -z "$redis_ver" ]] && redis_ver="7.4-alpine"
     [[ -z "$maria_pool" ]] && maria_pool="${MARIADB_BUFFER_POOL_SIZE}"
     [[ -z "$php_ver" ]] && php_ver="8.4"
-    [[ -z "$pma_ver" || "$pma_ver" == "latest" ]] && pma_ver="5.2.2"
+    [[ -z "$pma_ver" ]] && pma_ver="latest"
     [[ -z "$pma_limit" ]] && pma_limit="128M"
     [[ -z "$redis_policy" ]] && redis_policy="allkeys-lru"
 
@@ -168,26 +168,8 @@ EOF
     success "Configuration secured in ${ENV_FILE} (PHP ${php_ver}, phpMyAdmin enabled: ${enable_pma})"
 }
 
-start_services() {
-    local enable_pma
-    enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'true')"
-
-    if [[ "$enable_pma" == "true" ]]; then
-        section "Deploying MariaDB, Redis and phpMyAdmin (FrankenPHP)"
-        log "Starting stack..."
-        docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
-    else
-        section "Deploying MariaDB and Redis containers (phpMyAdmin disabled)"
-        log "Starting core database services..."
-        docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d mariadb redis
-        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E -q '^(shared-phpmyadmin|phpmyadmin)$'; then
-            log "phpMyAdmin is disabled. Stopping existing container..."
-            docker stop shared-phpmyadmin phpmyadmin 2>/dev/null || true
-            docker rm shared-phpmyadmin phpmyadmin 2>/dev/null || true
-            success "phpMyAdmin container removed."
-        fi
-    fi
-
+wait_for_healthy() {
+    local enable_pma="${1:-true}"
     log "Waiting for containers to become healthy..."
     local max_wait=60
     local elapsed=0
@@ -229,6 +211,29 @@ start_services() {
     fi
 }
 
+start_services() {
+    local enable_pma
+    enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'true')"
+
+    if [[ "$enable_pma" == "true" ]]; then
+        section "Deploying MariaDB, Redis and phpMyAdmin (FrankenPHP)"
+        log "Starting stack..."
+        docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
+    else
+        section "Deploying MariaDB and Redis containers (phpMyAdmin disabled)"
+        log "Starting core database services..."
+        docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d mariadb redis
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E -q '^(shared-phpmyadmin|phpmyadmin)$'; then
+            log "phpMyAdmin is disabled. Stopping existing container..."
+            docker stop shared-phpmyadmin phpmyadmin 2>/dev/null || true
+            docker rm shared-phpmyadmin phpmyadmin 2>/dev/null || true
+            success "phpMyAdmin container removed."
+        fi
+    fi
+
+    wait_for_healthy "$enable_pma"
+}
+
 stop_services() {
     section "Stopping services"
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down
@@ -253,11 +258,13 @@ pull_images() {
     enable_pma="$(grep -E '^ENABLE_PHPMYADMIN=' "$ENV_FILE" 2>/dev/null | cut -d '=' -f2- | tr -d '"'\'' \r\n' || echo 'true')"
     if [[ "$enable_pma" == "true" ]]; then
         docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull
-        docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
+        docker exec phpmyadmin rm -f /app/public/.pma-version 2>/dev/null || true
+        docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --force-recreate
     else
         docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull mariadb redis
         docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d mariadb redis
     fi
+    wait_for_healthy "$enable_pma"
     success "Services updated."
 }
 

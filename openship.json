@@ -13,12 +13,24 @@
       "value": "",
       "secret": true
     },
+    "MARIADB_VERSION": {
+      "value": "11.4",
+      "secret": false
+    },
+    "REDIS_VERSION": {
+      "value": "7.4-alpine",
+      "secret": false
+    },
     "PHP_VERSION": {
       "value": "8.4",
       "secret": false
     },
     "ENABLE_PHPMYADMIN": {
       "value": "true",
+      "secret": false
+    },
+    "PHPMYADMIN_VERSION": {
+      "value": "latest",
       "secret": false
     },
     "PHPMYADMIN_DOMAIN": {

@@ -69,7 +69,7 @@ services:
     environment:
       PMA_HOST: ${PHPMYADMIN_HOST:-mariadb}
       PMA_PORT: ${MARIADB_PORT:-3306}
-      PMA_VERSION: ${PHPMYADMIN_VERSION:-5.2.2}
+      PMA_VERSION: ${PHPMYADMIN_VERSION:-latest}
       UPLOAD_LIMIT: ${PHPMYADMIN_UPLOAD_LIMIT:-512M}
       MEMORY_LIMIT: ${PHPMYADMIN_MEMORY_LIMIT:-128M}
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD:-}}
@@ -86,11 +86,22 @@ services:
         if ! php -m | grep -qi '^mysqli$$'; then
           install-php-extensions mysqli
         fi
-        if [ ! -f /app/public/index.php ]; then
+        INSTALLED_VER=""
+        if [ -f /app/public/.pma-version ]; then
+          INSTALLED_VER="$$(cat /app/public/.pma-version 2>/dev/null || true)"
+        fi
+        if [ ! -f /app/public/index.php ] || [ "$${INSTALLED_VER}" != "$${PMA_VERSION}" ]; then
+          if [ "$${PMA_VERSION}" = "latest" ]; then
+            PMA_URL="https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.tar.gz"
+          else
+            PMA_URL="https://files.phpmyadmin.net/phpMyAdmin/$${PMA_VERSION}/phpMyAdmin-$${PMA_VERSION}-all-languages.tar.gz"
+          fi
           mkdir -p /app/public
-          curl -fsSL "https://files.phpmyadmin.net/phpMyAdmin/$${PMA_VERSION}/phpMyAdmin-$${PMA_VERSION}-all-languages.tar.gz" -o /tmp/pma.tar.gz
+          curl -fsSL "$${PMA_URL}" -o /tmp/pma.tar.gz
+          find /app/public -mindepth 1 -delete
           tar -xzf /tmp/pma.tar.gz -C /app/public --strip-components=1
           rm -f /tmp/pma.tar.gz
+          printf '%s' "$${PMA_VERSION}" > /app/public/.pma-version
         fi
         cat > /app/public/config.inc.php <<'EOF'
         <?php

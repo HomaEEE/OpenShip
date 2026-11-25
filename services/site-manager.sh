@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# Site & Nginx Manager CLI (site-cli)
+# Site & FrankenPHP Manager CLI (site-cli)
 # ==============================================================================
 #
-# Production site provisioner for Nginx, PHP-FPM, MariaDB & Redis.
+# Production site provisioner for FrankenPHP (Caddy + PHP), MariaDB & Redis.
 #
 # Usage:
 #   site-cli create <domain> [options]
@@ -18,9 +18,9 @@
 
 set -Eeuo pipefail
 
-readonly CLI_VERSION="1.0.0"
-readonly SITES_AVAILABLE="/etc/nginx/sites-available"
-readonly SITES_ENABLED="/etc/nginx/sites-enabled"
+readonly CLI_VERSION="2.0.0"
+readonly CADDYFILE="/etc/frankenphp/Caddyfile"
+readonly SITES_DIR="/etc/frankenphp/sites.d"
 readonly WWW_ROOT="/var/www"
 
 # ------------------------------------------------------------------------------
@@ -91,36 +91,32 @@ generate_password() {
     fi
 }
 
-detect_php_socket() {
-    local custom_php="${1:-}"
+ensure_frankenphp_layout() {
+    mkdir -p "$SITES_DIR" "/var/log/frankenphp"
+    if [[ ! -f "$CADDYFILE" ]]; then
+        cat > "$CADDYFILE" <<'EOF'
+{
+    frankenphp
+}
 
-    if [[ -n "$custom_php" ]]; then
-        # Check specific PHP version socket
-        local specific_sock="/run/php/php${custom_php}-fpm.sock"
-        if [[ -S "$specific_sock" ]]; then
-            echo "unix:${specific_sock}"
-            return 0
-        fi
+import /etc/frankenphp/sites.d/*.caddy
+EOF
+    elif ! grep -q "import ${SITES_DIR}/\*.caddy" "$CADDYFILE" 2>/dev/null; then
+        echo "" >> "$CADDYFILE"
+        echo "import ${SITES_DIR}/*.caddy" >> "$CADDYFILE"
     fi
+}
 
-    # Find active php-fpm unix socket in /run/php
-    local found_sock
-    found_sock="$(find /run/php/ -maxdepth 1 -name 'php*-fpm.sock' 2>/dev/null | sort -V -r | head -n1 || true)"
-    if [[ -n "$found_sock" && -S "$found_sock" ]]; then
-        echo "unix:${found_sock}"
+reload_frankenphp() {
+    if ! command_exists frankenphp; then
+        warn "frankenphp binary not found. Skipping config validation/reload."
         return 0
     fi
-
-    # Default fallback to php8.3 or php8.2
-    if [[ -S "/run/php/php8.3-fpm.sock" ]]; then
-        echo "unix:/run/php/php8.3-fpm.sock"
-    elif [[ -S "/run/php/php8.2-fpm.sock" ]]; then
-        echo "unix:/run/php/php8.2-fpm.sock"
-    elif [[ -S "/run/php/php8.1-fpm.sock" ]]; then
-        echo "unix:/run/php/php8.1-fpm.sock"
-    else
-        echo "unix:/run/php/php-fpm.sock"
+    if frankenphp validate --config "$CADDYFILE" >/dev/null 2>&1; then
+        systemctl reload frankenphp 2>/dev/null || systemctl restart frankenphp 2>/dev/null || true
+        return 0
     fi
+    return 1
 }
 
 check_mysql_client() {
@@ -181,93 +177,61 @@ db_drop() {
 # Nginx Configuration Generator
 # ------------------------------------------------------------------------------
 
-generate_nginx_config() {
+generate_caddy_config() {
     local domain="$1"
     local web_root="$2"
     local template="$3"
-    local php_sock="$4"
+    local enable_ssl="${4:-true}"
+    local proxy_port="${5:-8080}"
+
+    local site_addr="${domain}, www.${domain}"
+    if [[ "$enable_ssl" != "true" ]]; then
+        site_addr="http://${domain}, http://www.${domain}"
+    fi
+
+    cat <<EOF
+# ==============================================================================
+# FrankenPHP / Caddy Configuration for ${domain} (Template: ${template})
+# ==============================================================================
+
+${site_addr} {
+    encode zstd gzip
+
+    log {
+        output file /var/log/frankenphp/${domain}.access.log
+    }
+
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+EOF
 
     case "$template" in
         opencart)
             cat <<EOF
-# ==============================================================================
-# Nginx Configuration for ${domain} (Template: OpenCart)
-# ==============================================================================
 
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${domain} www.${domain};
+    root * ${web_root}
 
-    root ${web_root};
-    index index.php index.html index.htm;
-
-    # Logging
-    access_log /var/log/nginx/${domain}.access.log;
-    error_log /var/log/nginx/${domain}.error.log warn;
-
-    # Security Headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    # OpenCart SEO URL rewrites
-    location / {
-        try_files \$uri \$uri/ @opencart;
+    @forbidden {
+        path /system/* *.ini *.log *.tpl *.twig *.yaml *.yml *.sql /.env* /.*
+        not path /.well-known/*
     }
+    respond @forbidden 403
 
-    location @opencart {
-        rewrite ^/(.+)$ /index.php?_route_=\$1 last;
-    }
+    @sitemap path /sitemap.xml
+    rewrite @sitemap /index.php?route=extension/feed/google_sitemap
 
-    # OpenCart SEO Feeds
-    location = /sitemap.xml {
-        rewrite ^ /index.php?route=extension/feed/google_sitemap break;
-    }
-    location = /googlebase.xml {
-        rewrite ^ /index.php?route=extension/feed/google_base break;
-    }
+    @googlebase path /googlebase.xml
+    rewrite @googlebase /index.php?route=extension/feed/google_base
 
-    # Block sensitive OpenCart system storage and configs
-    location ^~ /system/storage/ {
-        deny all;
-        return 403;
-    }
-    location ^~ /system/ {
-        deny all;
-        return 403;
-    }
-    location ~* \.(ini|log|tpl|twig|yaml|yml|sql)$ {
-        deny all;
-        return 403;
-    }
+    @static file
+    header @static Cache-Control "public, max-age=2592000"
 
-    # PHP-FPM Handler
-    location ~ \.php$ {
-        try_files \$uri =404;
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass ${php_sock};
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        include fastcgi_params;
-        fastcgi_buffer_size 64k;
-        fastcgi_buffers 16 32k;
-        fastcgi_busy_buffers_size 128k;
-        fastcgi_read_timeout 300s;
-    }
-
-    # Static Assets Caching & Brotli/Gzip
-    location ~* \.(jpg|jpeg|gif|png|webp|svg|ico|css|js|woff|woff2|ttf|eot)$ {
-        expires 30d;
-        add_header Cache-Control "public, no-transform";
-        try_files \$uri \$uri/ /index.php?\$args;
-        access_log off;
-    }
-
-    # Protect Hidden Files
-    location ~ /\.(?!well-known).* {
-        deny all;
+    php_server {
+        try_files {path} {path}/ /index.php?_route_={path}&{query}
     }
 }
 EOF
@@ -275,195 +239,84 @@ EOF
 
         wordpress)
             cat <<EOF
-# ==============================================================================
-# Nginx Configuration for ${domain} (Template: WordPress)
-# ==============================================================================
 
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${domain} www.${domain};
+    root * ${web_root}
 
-    root ${web_root};
-    index index.php index.html index.htm;
-
-    access_log /var/log/nginx/${domain}.access.log;
-    error_log /var/log/nginx/${domain}.error.log warn;
-
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    location / {
-        try_files \$uri \$uri/ /index.php?\$args;
+    @forbidden {
+        path /wp-config.php /xmlrpc.php /wp-content/uploads/*.php /wp-includes/*.php /.env* /.*
+        not path /.well-known/*
     }
+    respond @forbidden 403
 
-    location ~ \.php$ {
-        try_files \$uri =404;
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass ${php_sock};
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        include fastcgi_params;
-        fastcgi_buffer_size 64k;
-        fastcgi_buffers 16 32k;
-        fastcgi_busy_buffers_size 128k;
-        fastcgi_read_timeout 300s;
-    }
+    @static file
+    header @static Cache-Control "public, max-age=2592000"
 
-    location ~* wp-config.php {
-        deny all;
-    }
-    location ~* /(?:uploads|files)/.*\.php$ {
-        deny all;
-    }
-    location ~ /\.(?!well-known).* {
-        deny all;
-    }
-
-    location ~* \.(jpg|jpeg|gif|png|webp|svg|ico|css|js|woff|woff2|ttf|eot)$ {
-        expires 30d;
-        add_header Cache-Control "public, no-transform";
-        access_log off;
-    }
+    php_server
 }
 EOF
             ;;
 
         laravel)
             cat <<EOF
-# ==============================================================================
-# Nginx Configuration for ${domain} (Template: Laravel)
-# ==============================================================================
 
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${domain} www.${domain};
+    root * ${web_root}
 
-    root ${web_root};
-    index index.php index.html;
-
-    access_log /var/log/nginx/${domain}.access.log;
-    error_log /var/log/nginx/${domain}.error.log warn;
-
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-
-    location / {
-        try_files \$uri \$uri/ /index.php?\$query_string;
+    @forbidden {
+        path /.env* /.*
+        not path /.well-known/*
     }
+    respond @forbidden 403
 
-    location ~ \.php$ {
-        fastcgi_pass ${php_sock};
-        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
-        include fastcgi_params;
-        fastcgi_buffer_size 64k;
-        fastcgi_buffers 16 32k;
-        fastcgi_busy_buffers_size 128k;
-        fastcgi_read_timeout 300s;
-    }
+    @static file
+    header @static Cache-Control "public, max-age=2592000"
 
-    location ~ /\.(?!well-known).* {
-        deny all;
-    }
-
-    location ~* \.(jpg|jpeg|gif|png|webp|svg|ico|css|js|woff|woff2|ttf|eot)$ {
-        expires 30d;
-        add_header Cache-Control "public, no-transform";
-        access_log off;
-    }
+    php_server
 }
 EOF
             ;;
 
         static)
             cat <<EOF
-# ==============================================================================
-# Nginx Configuration for ${domain} (Template: Static HTML)
-# ==============================================================================
 
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${domain} www.${domain};
+    root * ${web_root}
 
-    root ${web_root};
-    index index.html index.htm;
-
-    access_log /var/log/nginx/${domain}.access.log;
-    error_log /var/log/nginx/${domain}.error.log warn;
-
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-
-    location / {
-        try_files \$uri \$uri/ =404;
+    @forbidden {
+        path /.env* /.*
+        not path /.well-known/*
     }
+    respond @forbidden 403
 
-    location ~ /\.(?!well-known).* {
-        deny all;
-    }
+    @static file
+    header @static Cache-Control "public, max-age=2592000"
 
-    location ~* \.(jpg|jpeg|gif|png|webp|svg|ico|css|js|woff|woff2|ttf|eot)$ {
-        expires 30d;
-        add_header Cache-Control "public, no-transform";
-        access_log off;
-    }
+    file_server
+}
+EOF
+            ;;
+
+        proxy)
+            cat <<EOF
+
+    reverse_proxy 127.0.0.1:${proxy_port}
 }
 EOF
             ;;
 
         generic|*)
             cat <<EOF
-# ==============================================================================
-# Nginx Configuration for ${domain} (Template: Generic PHP)
-# ==============================================================================
 
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${domain} www.${domain};
+    root * ${web_root}
 
-    root ${web_root};
-    index index.php index.html index.htm;
-
-    access_log /var/log/nginx/${domain}.access.log;
-    error_log /var/log/nginx/${domain}.error.log warn;
-
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-    location / {
-        try_files \$uri \$uri/ /index.php?\$args;
+    @forbidden {
+        path /.env* /.*
+        not path /.well-known/*
     }
+    respond @forbidden 403
 
-    location ~ \.php$ {
-        try_files \$uri =404;
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass ${php_sock};
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        include fastcgi_params;
-        fastcgi_buffer_size 64k;
-        fastcgi_buffers 16 32k;
-        fastcgi_busy_buffers_size 128k;
-        fastcgi_read_timeout 300s;
-    }
+    @static file
+    header @static Cache-Control "public, max-age=2592000"
 
-    location ~ /\.(?!well-known).* {
-        deny all;
-    }
-
-    location ~* \.(jpg|jpeg|gif|png|webp|svg|ico|css|js|woff|woff2|ttf|eot)$ {
-        expires 30d;
-        add_header Cache-Control "public, no-transform";
-        access_log off;
-    }
+    php_server
 }
 EOF
             ;;
@@ -591,18 +444,19 @@ cmd_create() {
     local template="generic"
     local custom_php=""
     local with_db="true"
-    local enable_ssl="false"
+    local enable_ssl="true"
+    local proxy_port="8080"
     local custom_db_name=""
     local custom_db_user=""
     local dry_run="false"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --template=*)
+            --template=*|--type=*)
                 template="${1#*=}"
                 shift
                 ;;
-            --template)
+            --template|--type)
                 template="${2:-generic}"
                 shift 2
                 ;;
@@ -612,6 +466,14 @@ cmd_create() {
                 ;;
             --php)
                 custom_php="${2:-}"
+                shift 2
+                ;;
+            --port=*)
+                proxy_port="${1#*=}"
+                shift
+                ;;
+            --port)
+                proxy_port="${2:-8080}"
                 shift 2
                 ;;
             --with-db)
@@ -660,22 +522,19 @@ cmd_create() {
         die "Domain name required: site-cli create <domain> [options]"
     fi
 
-    # Normalize domain
     domain="$(echo "$domain" | tr '[:upper:]' '[:lower:]' | sed 's|^https\?://||;s|/.*$||')"
 
-    # Validate template
     case "$template" in
-        generic|wordpress|opencart|laravel|static)
-            ;;
+        generic|php) template="generic" ;;
+        wordpress|opencart|laravel|static|proxy) ;;
         *)
-            die "Invalid template: '${template}'. Allowed: generic, wordpress, opencart, laravel, static"
+            die "Invalid template: '${template}'. Allowed: generic, php, wordpress, opencart, laravel, static, proxy"
             ;;
     esac
 
     local site_root="${WWW_ROOT}/${domain}"
     local web_root="${site_root}/public"
-    local nginx_available="${SITES_AVAILABLE}/${domain}.conf"
-    local nginx_enabled="${SITES_ENABLED}/${domain}.conf"
+    local caddy_snippet="${SITES_DIR}/${domain}.caddy"
     local env_file="${site_root}/.env"
     local creds_file="${site_root}/credentials.txt"
 
@@ -683,17 +542,14 @@ cmd_create() {
     log "Template:  ${template}"
     log "Site root: ${site_root}"
     log "Web root:  ${web_root}"
+    [[ -n "$custom_php" ]] && log "Note:      FrankenPHP uses embedded PHP (--php=${custom_php} ignored)."
 
     if [[ "$dry_run" == "true" ]]; then
         log "[DRY RUN] Would create directory ${site_root} and ${web_root}"
-        log "[DRY RUN] Would generate Nginx config at ${nginx_available}"
-        log "[DRY RUN] Would link to ${nginx_enabled} and test with nginx -t"
+        log "[DRY RUN] Would generate FrankenPHP config at ${caddy_snippet}"
+        log "[DRY RUN] Would validate with frankenphp validate and reload frankenphp"
         if [[ "$with_db" == "true" ]]; then
             log "[DRY RUN] Would create MariaDB database and user"
-            log "[DRY RUN] Would write credentials to ${env_file} and ${creds_file}"
-        fi
-        if [[ "$enable_ssl" == "true" ]]; then
-            log "[DRY RUN] Would run certbot --nginx -d ${domain} -d www.${domain}"
         fi
         success "[DRY RUN] Site validation completed successfully."
         return 0
@@ -701,32 +557,21 @@ cmd_create() {
 
     require_root
 
-    # 1. Directories
     mkdir -p "${web_root}"
-    mkdir -p "${SITES_AVAILABLE}" "${SITES_ENABLED}"
+    ensure_frankenphp_layout
 
-    # 2. PHP Socket
-    local php_sock
-    php_sock="$(detect_php_socket "$custom_php")"
-    log "PHP-FPM:   ${php_sock}"
+    log "Generating FrankenPHP / Caddy config..."
+    generate_caddy_config "$domain" "$web_root" "$template" "$enable_ssl" "$proxy_port" > "${caddy_snippet}"
 
-    # 3. Nginx Config
-    log "Generating Nginx server block..."
-    generate_nginx_config "$domain" "$web_root" "$template" "$php_sock" > "${nginx_available}"
-    ln -sf "${nginx_available}" "${nginx_enabled}"
-
-    # 4. Verify Nginx Syntax
-    if nginx -t 2>/dev/null; then
-        systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || true
-        success "Nginx configuration activated and reloaded."
+    if reload_frankenphp; then
+        success "FrankenPHP configuration validated and reloaded."
     else
-        error "Nginx configuration test failed! Reverting link..."
-        rm -f "${nginx_enabled}"
-        nginx -t || true
-        die "Check /var/log/nginx/error.log or ${nginx_available}"
+        error "FrankenPHP configuration validation failed! Reverting ${caddy_snippet}..."
+        rm -f "${caddy_snippet}"
+        frankenphp validate --config "$CADDYFILE" || true
+        die "Check ${CADDYFILE} or ${caddy_snippet}"
     fi
 
-    # 5. Database
     local db_name=""
     local db_user=""
     local db_pass=""
@@ -740,7 +585,9 @@ cmd_create() {
 
         db_create "$db_name" "$db_user" "$db_pass"
 
-        # Write credentials on level ABOVE web root: /var/www/<domain>/.env and credentials.txt
+        local scheme="https"
+        [[ "$enable_ssl" != "true" ]] && scheme="http"
+
         log "Writing database credentials to site directory (level above web root)..."
         cat > "${env_file}" <<EOF
 # ==============================================================================
@@ -749,7 +596,7 @@ cmd_create() {
 # ==============================================================================
 
 APP_ENV=production
-APP_URL=http://${domain}
+APP_URL=${scheme}://${domain}
 APP_DEBUG=false
 
 # Database (MariaDB)
@@ -782,9 +629,8 @@ Date Created:     $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 Directories:
   Site Directory: ${site_root}
   Web Directory:  ${web_root}
-  Nginx Config:   ${nginx_available}
-  Log Files:      /var/log/nginx/${domain}.access.log
-                  /var/log/nginx/${domain}.error.log
+  Caddy Config:   ${caddy_snippet}
+  Log File:       /var/log/frankenphp/${domain}.access.log
 
 MariaDB Database Credentials:
   Host:           127.0.0.1 (or localhost via socket)
@@ -806,25 +652,22 @@ EOF
         success "Credentials securely written to ${env_file} and ${creds_file} (chmod 600)."
     fi
 
-    # 6. Starter Page
     create_starter_page "$domain" "$web_root" "$template" "$db_name" "$db_user"
 
-    # 7. Permissions
     local web_user="www-data"
     chown -R "${web_user}:${web_user}" "${site_root}" 2>/dev/null || true
     chmod 755 "${site_root}" "${web_root}" 2>/dev/null || true
 
-    # 8. SSL via Certbot if requested
-    if [[ "$enable_ssl" == "true" ]]; then
-        cmd_ssl "$domain"
-    fi
+    local display_scheme="https"
+    [[ "$enable_ssl" != "true" ]] && display_scheme="http"
 
     section "Site Created Successfully"
-    echo -e "  Domain:    ${BOLD}${GREEN}http://${domain}${NC}"
+    echo -e "  Domain:    ${BOLD}${GREEN}${display_scheme}://${domain}${NC}"
     echo -e "  Web root:  ${web_root}"
+    echo -e "  Config:    ${caddy_snippet}"
     if [[ "$with_db" == "true" ]]; then
         echo -e "  Database:  ${db_name} (User: ${db_user})"
-        echo -e "  Config:    ${env_file}"
+        echo -e "  Env file:  ${env_file}"
     fi
     echo
 }
@@ -869,8 +712,7 @@ cmd_delete() {
     domain="$(echo "$domain" | tr '[:upper:]' '[:lower:]' | sed 's|^https\?://||;s|/.*$||')"
 
     local site_root="${WWW_ROOT}/${domain}"
-    local nginx_available="${SITES_AVAILABLE}/${domain}.conf"
-    local nginx_enabled="${SITES_ENABLED}/${domain}.conf"
+    local caddy_snippet="${SITES_DIR}/${domain}.caddy"
     local env_file="${site_root}/.env"
 
     if [[ "$force" != "true" ]]; then
@@ -909,13 +751,11 @@ cmd_delete() {
         db_drop "$db_name" "$db_user"
     fi
 
-    # Remove Nginx configurations
-    log "Removing Nginx configuration..."
-    rm -f "${nginx_enabled}" "${nginx_available}"
-    if nginx -t 2>/dev/null; then
-        systemctl reload nginx 2>/dev/null || true
-    fi
-    success "Nginx configuration removed and reloaded."
+    # Remove FrankenPHP/Caddy configuration
+    log "Removing FrankenPHP configuration..."
+    rm -f "${caddy_snippet}"
+    reload_frankenphp || true
+    success "FrankenPHP configuration removed and reloaded."
 
     # Remove site directory
     if [[ -d "${site_root}" ]]; then
@@ -934,56 +774,47 @@ cmd_delete() {
 cmd_list() {
     section "Configured Websites"
 
-    if [[ ! -d "${SITES_AVAILABLE}" ]]; then
-        warn "Nginx sites directory not found at ${SITES_AVAILABLE}."
+    if [[ ! -d "${SITES_DIR}" ]]; then
+        warn "FrankenPHP sites directory not found at ${SITES_DIR}."
         return 0
     fi
 
     local count=0
-    printf "  %-24s %-10s %-8s %-12s %s\n" "DOMAIN" "STATUS" "SSL" "TEMPLATE" "WEB ROOT"
+    printf "  %-24s %-10s %-8s %-12s %s\n" "DOMAIN" "STATUS" "SSL" "TEMPLATE" "WEB ROOT / TARGET"
     printf "  %-24s %-10s %-8s %-12s %s\n" "------------------------" "----------" "--------" "------------" "------------------------"
 
-    for conf in "${SITES_AVAILABLE}"/*.conf; do
+    for conf in "${SITES_DIR}"/*.caddy; do
         [[ -f "$conf" ]] || continue
         local domain
-        domain="$(basename "$conf" .conf)"
-        [[ "$domain" != "default" && "$domain" != "00-default" ]] || continue
+        domain="$(basename "$conf" .caddy)"
 
-        local status="disabled"
-        if [[ -f "${SITES_ENABLED}/${domain}.conf" ]]; then
-            status="active"
-        fi
-
-        local ssl="no"
-        if grep -q "ssl_certificate" "$conf" 2>/dev/null || grep -q "listen 443" "$conf" 2>/dev/null; then
-            ssl="yes"
+        local status="active"
+        local ssl="auto-tls"
+        if grep -qE '^\s*http://' "$conf" 2>/dev/null; then
+            ssl="http"
         fi
 
         local template="generic"
-        if grep -q "Template: OpenCart" "$conf" 2>/dev/null; then
+        if grep -qi "Template: opencart" "$conf" 2>/dev/null; then
             template="opencart"
-        elif grep -q "Template: WordPress" "$conf" 2>/dev/null; then
+        elif grep -qi "Template: wordpress" "$conf" 2>/dev/null; then
             template="wordpress"
-        elif grep -q "Template: Laravel" "$conf" 2>/dev/null; then
+        elif grep -qi "Template: laravel" "$conf" 2>/dev/null; then
             template="laravel"
-        elif grep -q "Template: Static" "$conf" 2>/dev/null; then
+        elif grep -qi "Template: static" "$conf" 2>/dev/null; then
             template="static"
+        elif grep -qi "Template: proxy" "$conf" 2>/dev/null; then
+            template="proxy"
         fi
 
-        local root_path
-        root_path="$(grep -E '^\s*root\s+' "$conf" | head -n1 | awk '{print $2}' | tr -d ';' || echo "${WWW_ROOT}/${domain}/public")"
-
-        local status_styled="${RED}${status}${NC}"
-        if [[ "$status" == "active" ]]; then
-            status_styled="${GREEN}${status}${NC}"
+        local target_path
+        if [[ "$template" == "proxy" ]]; then
+            target_path="$(grep -E '^\s*reverse_proxy\s+' "$conf" | head -n1 | awk '{print $2}' || echo "127.0.0.1:8080")"
+        else
+            target_path="$(grep -E '^\s*root\s+\*\s+' "$conf" | head -n1 | awk '{print $3}' || echo "${WWW_ROOT}/${domain}/public")"
         fi
 
-        local ssl_styled="${YELLOW}${ssl}${NC}"
-        if [[ "$ssl" == "yes" ]]; then
-            ssl_styled="${GREEN}${ssl}${NC}"
-        fi
-
-        printf "  %-24s %-19b %-17b %-12s %s\n" "${domain}" "${status_styled}" "${ssl_styled}" "${template}" "${root_path}"
+        printf "  %-24s %-19b %-17b %-12s %s\n" "${domain}" "${GREEN}${status}${NC}" "${GREEN}${ssl}${NC}" "${template}" "${target_path}"
         count=$((count + 1))
     done
 
@@ -1008,28 +839,23 @@ cmd_ssl() {
     fi
 
     domain="$(echo "$domain" | tr '[:upper:]' '[:lower:]' | sed 's|^https\?://||;s|/.*$||')"
+    local caddy_snippet="${SITES_DIR}/${domain}.caddy"
 
     require_root
 
-    if ! command_exists certbot; then
-        die "'certbot' is required for automated SSL. Please install certbot and python3-certbot-nginx."
+    if [[ ! -f "$caddy_snippet" ]]; then
+        die "Site config not found: ${caddy_snippet}"
     fi
 
-    section "Issuing Let's Encrypt SSL Certificate for ${domain}"
-    log "Requesting certificate for ${domain} and www.${domain}..."
+    section "Enabling Automatic HTTPS (Caddy/FrankenPHP) for ${domain}"
+    sed -i -E 's|http://([^ ,]+)|\1|g' "$caddy_snippet"
 
-    if certbot --nginx --non-interactive --agree-tos --redirect -m "admin@${domain}" -d "${domain}" -d "www.${domain}"; then
-        success "SSL certificate successfully installed and HTTPS redirect enabled!"
+    if reload_frankenphp; then
+        success "Automatic HTTPS enabled and FrankenPHP reloaded for ${domain}!"
     else
-        warn "Issuance with www.${domain} failed. Retrying with root domain only: ${domain}..."
-        if certbot --nginx --non-interactive --agree-tos --redirect -m "admin@${domain}" -d "${domain}"; then
-            success "SSL certificate successfully installed for ${domain}!"
-        else
-            die "Certbot failed to obtain SSL certificate. Ensure domain DNS records point to this VPS IP and port 80 is open."
-        fi
+        die "FrankenPHP validation failed for ${caddy_snippet}."
     fi
 
-    # Update .env APP_URL if exists
     local env_file="${WWW_ROOT}/${domain}/.env"
     if [[ -f "$env_file" ]]; then
         sed -i -E 's|^APP_URL=http://|APP_URL=https://|' "$env_file" 2>/dev/null || true
@@ -1119,29 +945,29 @@ cmd_install_global() {
 
 show_help() {
     cat <<EOF
-Site & Nginx Manager CLI (v${CLI_VERSION})
+Site & FrankenPHP Manager CLI (v${CLI_VERSION})
 
 Usage:
   site-cli <command> [arguments] [options]
 
 Commands:
-  create <domain> [options]    Create a new website, Nginx config, and MariaDB database
+  create <domain> [options]    Create a new website, FrankenPHP/Caddy config, and MariaDB database
   delete <domain> [options]    Delete a website and optionally its database
   list                         List all configured websites and their status
-  ssl <domain>                 Issue / install Let's Encrypt SSL certificate via Certbot
+  ssl <domain>                 Enable automatic HTTPS (Caddy/FrankenPHP) for a domain
   db <domain> [create|dump|drop] Manage MariaDB database for a domain
   install-global               Install symlink to /usr/local/bin/site-cli
   version, -v                  Display CLI version
   help, -h                     Display this help message
 
 Options for 'create':
-  --template=<type>            Site template: opencart, wordpress, laravel, generic, static (default: generic)
-  --php=<version>              PHP version (e.g. 8.3, 8.2) or auto-detect
+  --template=<type>, --type=   Site template: opencart, wordpress, laravel, php, generic, static, proxy (default: generic)
+  --port=<port>                Backend port for proxy template (default: 8080)
   --with-db                    Create MariaDB database & user (default)
   --without-db                 Skip database creation
   --db-name=<name>             Custom database name (default: <domain>_db)
   --db-user=<user>             Custom database user (default: <domain>_usr)
-  --ssl                        Issue Let's Encrypt SSL certificate via Certbot
+  --ssl / --no-ssl             Enable automatic HTTPS (default: enabled) or HTTP-only
   --dry-run                    Simulate creation without writing changes
 
 Options for 'delete':
@@ -1152,7 +978,7 @@ Directory structure created:
   /var/www/<domain>/
   ├── .env                     <- Database & app credentials (chmod 600)
   ├── credentials.txt          <- Detailed access summary (chmod 600)
-  └── public/                  <- Web root served by Nginx
+  └── public/                  <- Web root served by FrankenPHP
       └── index.php            <- Starter status page
 
 Examples:

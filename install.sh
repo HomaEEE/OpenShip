@@ -60,6 +60,14 @@ CADDY_ORIGIN_CERT_PATH="${CADDY_ORIGIN_CERT_PATH:-}"
 CADDY_ORIGIN_KEY_PATH="${CADDY_ORIGIN_KEY_PATH:-}"
 CADDY_ORIGIN_CERT_CONTENT="${CADDY_ORIGIN_CERT_CONTENT:-}"
 CADDY_ORIGIN_KEY_CONTENT="${CADDY_ORIGIN_KEY_CONTENT:-}"
+CLI_STACK_CHOICE="${CLI_STACK_CHOICE:-}"
+CLI_WITH_FRANKENPHP="${CLI_WITH_FRANKENPHP:-}"
+CLI_WITH_MARIADB="${CLI_WITH_MARIADB:-}"
+CLI_WITH_REDIS="${CLI_WITH_REDIS:-}"
+CLI_WITH_DOCKER="${CLI_WITH_DOCKER:-}"
+CLI_WITH_SITE_CLI="${CLI_WITH_SITE_CLI:-}"
+PURGE_APACHE="${PURGE_APACHE:-false}"
+INSTALLED_COMPONENTS=()
 
 # ------------------------------------------------------------------------------
 # Colors
@@ -108,9 +116,19 @@ show_help() {
     echo "General Options:"
     echo "  --dry-run                    Validate system without modifying configuration"
     echo "  --non-interactive            Run fully unattended with flags or defaults"
-    echo "  --mode=bare|standard         Installation mode (bare: embedded Node, standard: compose)"
+    echo "  --mode=bare|standard|tune-only Installation mode (bare, standard, or tune-only)"
+    echo "  --tune-only                  Shortcut for --mode=tune-only (OS tuning + stacks, no OpenShip)"
     echo "  --version, -v                Display version"
     echo "  --help, -h                   Display this help message"
+    echo
+    echo "Stack Options (Optional):"
+    echo "  --stack=frankenphp|docker|custom|none Install stack (frankenphp: FrankenPHP+MariaDB+Redis+site-cli)"
+    echo "  --with-frankenphp            Install FrankenPHP (Caddy + embedded PHP)"
+    echo "  --with-mariadb               Install MariaDB server & client"
+    echo "  --with-redis                 Install Redis server"
+    echo "  --with-docker                Install Docker Engine & Compose v2"
+    echo "  --with-site-cli              Install site-cli (/usr/local/bin/site-cli)"
+    echo "  --purge-apache               Automatically remove pre-installed Apache2"
     echo
     echo "System & Network Options:"
     echo "  --hostname=NAME              Control plane hostname (default: openship-control)"
@@ -325,6 +343,47 @@ while [[ $# -gt 0 ]]; do
             ;;
         --disable-fail2ban)
             ENABLE_FAIL2BAN=false
+            shift
+            ;;
+        --tune-only)
+            INSTALL_MODE="tune-only"
+            shift
+            ;;
+        --stack=*)
+            CLI_STACK_CHOICE="${1#*=}"
+            shift
+            ;;
+        --stack)
+            CLI_STACK_CHOICE="$2"
+            shift 2
+            ;;
+        --with-frankenphp)
+            CLI_WITH_FRANKENPHP="true"
+            [[ -z "$CLI_STACK_CHOICE" ]] && CLI_STACK_CHOICE="custom"
+            shift
+            ;;
+        --with-mariadb)
+            CLI_WITH_MARIADB="true"
+            [[ -z "$CLI_STACK_CHOICE" ]] && CLI_STACK_CHOICE="custom"
+            shift
+            ;;
+        --with-redis)
+            CLI_WITH_REDIS="true"
+            [[ -z "$CLI_STACK_CHOICE" ]] && CLI_STACK_CHOICE="custom"
+            shift
+            ;;
+        --with-docker)
+            CLI_WITH_DOCKER="true"
+            [[ -z "$CLI_STACK_CHOICE" ]] && CLI_STACK_CHOICE="custom"
+            shift
+            ;;
+        --with-site-cli)
+            CLI_WITH_SITE_CLI="true"
+            [[ -z "$CLI_STACK_CHOICE" ]] && CLI_STACK_CHOICE="custom"
+            shift
+            ;;
+        --purge-apache)
+            PURGE_APACHE="true"
             shift
             ;;
         *)
@@ -2454,7 +2513,10 @@ select_installation_mode() {
         echo "     Full OpenShip Docker Compose stack (Postgres + Redis)."
         echo "     Requires more RAM."
         echo
-        echo "  3) Cancel"
+        echo "  3) Tune & Stacks only (no OpenShip)"
+        echo "     OS hardening, swap, and optional FrankenPHP/MariaDB/Redis/Docker."
+        echo
+        echo "  4) Cancel"
         echo
 
         while true; do
@@ -2479,6 +2541,10 @@ select_installation_mode() {
                     fi
                     ;;
                 3)
+                    INSTALL_MODE="tune-only"
+                    break
+                    ;;
+                4)
                     die "Installation cancelled."
                     ;;
                 *)
@@ -2496,7 +2562,10 @@ select_installation_mode() {
         echo "  2) Bare"
         echo "     Lightweight Control Plane (Node process + embedded DB)."
         echo
-        echo "  3) Cancel"
+        echo "  3) Tune & Stacks only (no OpenShip)"
+        echo "     OS hardening, swap, and optional FrankenPHP/MariaDB/Redis/Docker."
+        echo
+        echo "  4) Cancel"
         echo
 
         while true; do
@@ -2514,6 +2583,10 @@ select_installation_mode() {
                     break
                     ;;
                 3)
+                    INSTALL_MODE="tune-only"
+                    break
+                    ;;
+                4)
                     die "Installation cancelled."
                     ;;
                 *)
@@ -2528,6 +2601,9 @@ select_installation_mode() {
     if [[ "$INSTALL_MODE" == "bare" ]]; then
         success "Selected mode: BARE Control Plane"
         log "OpenShip daemon will run as a native service with embedded database."
+    elif [[ "$INSTALL_MODE" == "tune-only" ]]; then
+        success "Selected mode: TUNE & STACKS ONLY (no OpenShip)"
+        log "Server will be tuned and configured with selected software stacks."
     else
         success "Selected mode: STANDARD Docker Stack"
         log "OpenShip will run using Docker Compose."
@@ -2650,9 +2726,14 @@ collect_configuration() {
         echo
     fi
 
-    echo "This VPS will act as the OpenShip Control Plane."
-    echo "Production applications (Laravel/CRM) should NOT be deployed here."
-    echo
+    if [[ "$INSTALL_MODE" == "tune-only" ]]; then
+        echo "This VPS will be tuned as a Worker / Application Server (without OpenShip Control Plane)."
+        echo
+    else
+        echo "This VPS will act as the OpenShip Control Plane."
+        echo "Production applications (Laravel/CRM) should NOT be deployed here."
+        echo
+    fi
 
     if [[ "$NON_INTERACTIVE" == "true" ]]; then
         HOSTNAME_INPUT="${HOSTNAME_INPUT:-openship-control}"
@@ -2987,6 +3068,395 @@ print_summary() {
 }
 
 # ==============================================================================
+# Server Tuning Extras & Software Stack Installation (FrankenPHP / DB / Docker)
+# ==============================================================================
+
+check_and_remove_apache() {
+    section "Checking for conflicting web servers (Apache)"
+
+    local has_apache=false
+    if command_exists apache2 || dpkg -s apache2 &>/dev/null 2>&1 || systemctl list-unit-files apache2.service &>/dev/null 2>&1; then
+        has_apache=true
+    fi
+
+    if [[ "$has_apache" != "true" ]]; then
+        success "No Apache installation detected."
+        return 0
+    fi
+
+    warn "Apache web server (apache2) is installed on this system."
+    warn "Apache conflicts on port 80/443 and consumes memory."
+
+    local do_purge=false
+    if [[ "$PURGE_APACHE" == "true" ]]; then
+        do_purge=true
+    elif [[ "$NON_INTERACTIVE" == "true" ]]; then
+        warn "Non-interactive mode: stopping and purging Apache..."
+        do_purge=true
+    else
+        if ask_yes_no "Stop and completely remove Apache (apache2)?" "Y"; then
+            do_purge=true
+        fi
+    fi
+
+    if [[ "$do_purge" == "true" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log "[DRY RUN] Would stop, disable and purge apache2 packages and configs."
+            return 0
+        fi
+
+        log "Stopping and disabling Apache service..."
+        systemctl stop apache2 2>/dev/null || true
+        systemctl disable apache2 2>/dev/null || true
+        systemctl mask apache2 2>/dev/null || true
+
+        run_task "Purging Apache packages and configurations" bash -c "export DEBIAN_FRONTEND=noninteractive; apt-get purge -y -qq apache2 apache2-utils apache2-bin apache2-data apache2.2-common 2>/dev/null || true"
+        run_task "Cleaning up unused Apache dependencies" bash -c "export DEBIAN_FRONTEND=noninteractive; apt-get autoremove -y -qq"
+
+        rm -rf /etc/apache2 /var/log/apache2 2>/dev/null || true
+        success "Apache web server successfully removed."
+    else
+        warn "Apache was preserved. Note: FrankenPHP/Caddy cannot bind to :80/:443 while Apache is active."
+    fi
+}
+
+install_component_frankenphp() {
+    section "Installing FrankenPHP (Caddy + Embedded PHP)"
+
+    local local_only=false
+    local listen_port="80/443"
+    if [[ "$INSTALL_MODE" != "tune-only" ]] && [[ "${OPENSHIP_PROXY_MODE:-none}" == "caddy" || "${OPENSHIP_EDGE_ENABLED:-false}" == "true" ]]; then
+        local_only=true
+        listen_port="127.0.0.1:8080"
+        warn "OpenShip proxy (${OPENSHIP_PROXY_MODE:-edge}) owns :80/:443 on this host."
+        warn "FrankenPHP will be configured on local port :8080 (auto_https off) to avoid port conflicts."
+    fi
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would install FrankenPHP binary and systemd service (listen: ${listen_port})."
+        INSTALLED_COMPONENTS+=("FrankenPHP (Caddy + PHP, ${listen_port})")
+        return 0
+    fi
+
+    if ! command_exists frankenphp; then
+        run_task "Installing FrankenPHP binary" bash -c '
+            cd /tmp && curl -fsSL https://frankenphp.dev/install.sh | sh && mv -f /tmp/frankenphp /usr/local/bin/frankenphp && chmod +x /usr/local/bin/frankenphp
+        '
+    else
+        success "FrankenPHP already installed: $(frankenphp version 2>/dev/null | head -n1 || echo 'present')"
+    fi
+
+    mkdir -p /etc/frankenphp /etc/frankenphp/sites.d /var/www /var/log/frankenphp
+    chown -R www-data:www-data /var/www /var/log/frankenphp 2>/dev/null || true
+
+    if [[ ! -f /etc/frankenphp/Caddyfile ]]; then
+        if [[ "$local_only" == "true" ]]; then
+            cat > /etc/frankenphp/Caddyfile <<'EOF'
+{
+    auto_https off
+    http_port 8080
+    frankenphp
+}
+
+:8080 {
+    respond "FrankenPHP is active on :8080" 200
+}
+
+import /etc/frankenphp/sites.d/*.caddy
+EOF
+        else
+            cat > /etc/frankenphp/Caddyfile <<'EOF'
+{
+    frankenphp
+}
+
+import /etc/frankenphp/sites.d/*.caddy
+EOF
+        fi
+    fi
+
+    cat > /etc/systemd/system/frankenphp.service <<'EOF'
+[Unit]
+Description=FrankenPHP Web Server (Caddy + PHP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=root
+Group=root
+ExecStart=/usr/local/bin/frankenphp run --environ --config /etc/frankenphp/Caddyfile
+ExecReload=/usr/local/bin/frankenphp reload --config /etc/frankenphp/Caddyfile --force
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable --now frankenphp 2>/dev/null || true
+
+    local fp_ver
+    fp_ver="$(frankenphp version 2>/dev/null | head -n1 | awk '{print $2}' || echo 'active')"
+    success "FrankenPHP (${fp_ver}) active (${listen_port})."
+    INSTALLED_COMPONENTS+=("FrankenPHP ${fp_ver} (${listen_port})")
+}
+
+install_component_mariadb() {
+    section "Installing MariaDB Server & Client"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would install MariaDB Server & Client."
+        INSTALLED_COMPONENTS+=("MariaDB Server (127.0.0.1:3306)")
+        return 0
+    fi
+
+    export DEBIAN_FRONTEND=noninteractive
+    run_task "Installing MariaDB packages" apt-get install -y -qq mariadb-server mariadb-client
+    systemctl enable --now mariadb 2>/dev/null || true
+    success "MariaDB active on 127.0.0.1:3306."
+    INSTALLED_COMPONENTS+=("MariaDB Server (127.0.0.1:3306)")
+}
+
+install_component_redis() {
+    section "Installing Redis In-Memory Cache"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would install Redis Server."
+        INSTALLED_COMPONENTS+=("Redis Cache (127.0.0.1:6379)")
+        return 0
+    fi
+
+    export DEBIAN_FRONTEND=noninteractive
+    run_task "Installing Redis server" apt-get install -y -qq redis-server
+    systemctl enable --now redis-server 2>/dev/null || true
+    success "Redis active on 127.0.0.1:6379."
+    INSTALLED_COMPONENTS+=("Redis Cache (127.0.0.1:6379)")
+}
+
+install_component_docker() {
+    section "Installing Docker Engine & Docker Compose v2"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would install Docker Engine and Docker Compose v2."
+        INSTALLED_COMPONENTS+=("Docker Engine & Docker Compose v2")
+        return 0
+    fi
+
+    if command_exists docker && docker compose version &>/dev/null; then
+        success "Docker Engine and Docker Compose v2 already present."
+        configure_docker
+        INSTALLED_COMPONENTS+=("Docker Engine & Docker Compose v2")
+        return 0
+    fi
+
+    local prev_mode="$INSTALL_MODE"
+    local prev_edge="${OPENSHIP_EDGE_ENABLED:-false}"
+    local prev_hc="${OPENSHIP_NO_HOST_CONTROL:-false}"
+    INSTALL_MODE="standard"
+    install_docker
+    configure_docker
+    INSTALL_MODE="$prev_mode"
+    OPENSHIP_EDGE_ENABLED="$prev_edge"
+    OPENSHIP_NO_HOST_CONTROL="$prev_hc"
+
+    if command_exists docker; then
+        local d_ver c_ver
+        d_ver="$(docker --version 2>/dev/null | awk '{print $3}' | tr -d ',' || echo "")"
+        c_ver="$(docker compose version 2>/dev/null || echo "")"
+        INSTALLED_COMPONENTS+=("Docker Engine (${d_ver}) & ${c_ver}")
+    fi
+}
+
+install_component_site_cli() {
+    section "Installing site-cli Management Tool"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log "[DRY RUN] Would link site-cli to /usr/local/bin/site-cli."
+        INSTALLED_COMPONENTS+=("site-cli (/usr/local/bin/site-cli)")
+        return 0
+    fi
+
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local site_cli_src="${script_dir}/services/site-manager.sh"
+
+    if [[ -f "$site_cli_src" ]]; then
+        chmod +x "$site_cli_src"
+        ln -sf "$site_cli_src" /usr/local/bin/site-cli
+        success "CLI management tool installed: /usr/local/bin/site-cli -> ${site_cli_src}"
+    else
+        log "Downloading site-cli to /usr/local/bin/site-cli..."
+        if curl -fsSL "https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/services/site-manager.sh" -o /usr/local/bin/site-cli 2>/dev/null; then
+            chmod +x /usr/local/bin/site-cli
+            success "CLI management tool installed: /usr/local/bin/site-cli"
+        else
+            warn "Could not install site-cli automatically."
+        fi
+    fi
+    INSTALLED_COMPONENTS+=("site-cli (/usr/local/bin/site-cli)")
+}
+
+install_full_frankenphp_stack() {
+    install_component_frankenphp
+    install_component_mariadb
+    install_component_redis
+    install_component_site_cli
+}
+
+install_custom_selection() {
+    section "Custom Software Stack Selection"
+
+    local do_frankenphp="${CLI_WITH_FRANKENPHP:-}"
+    local do_mariadb="${CLI_WITH_MARIADB:-}"
+    local do_redis="${CLI_WITH_REDIS:-}"
+    local do_docker="${CLI_WITH_DOCKER:-}"
+    local do_site_cli="${CLI_WITH_SITE_CLI:-}"
+
+    if [[ "$NON_INTERACTIVE" != "true" ]]; then
+        if [[ -z "$do_frankenphp" && -z "$do_mariadb" && -z "$do_redis" && -z "$do_docker" && -z "$do_site_cli" ]]; then
+            if [[ ! -e /dev/tty || ! -r /dev/tty ]]; then
+                log "No TTY detected. Skipping custom package selection."
+                return 0
+            fi
+
+            echo
+            echo -e "  ${BOLD}Available stack components:${NC}"
+            echo -e "    ${CYAN}[1]${NC} FrankenPHP — Caddy + embedded PHP (auto-SSL, HTTP/3)"
+            echo -e "    ${CYAN}[2]${NC} MariaDB    — MariaDB Server & Client (127.0.0.1:3306)"
+            echo -e "    ${CYAN}[3]${NC} Redis      — In-memory cache (127.0.0.1:6379)"
+            echo -e "    ${CYAN}[4]${NC} Docker     — Docker Engine & Docker Compose v2"
+            echo -e "    ${CYAN}[5]${NC} site-cli   — Site & DB CLI (/usr/local/bin/site-cli)"
+            echo
+            echo -e "  Enter numbers separated by comma/space (e.g. ${BOLD}1,2,3,5${NC}), 'all', or Enter for step-by-step:"
+
+            local pkg_input=""
+            read -r -p "  Components: " pkg_input </dev/tty || pkg_input=""
+            pkg_input="${pkg_input//[$'\r\n']/}"
+
+            case "$pkg_input" in
+                all|ALL)
+                    do_frankenphp="true"; do_mariadb="true"; do_redis="true"; do_docker="true"; do_site_cli="true"
+                    ;;
+                *[1-5]*)
+                    [[ "$pkg_input" =~ 1 ]] && do_frankenphp="true" || do_frankenphp="false"
+                    [[ "$pkg_input" =~ 2 ]] && do_mariadb="true" || do_mariadb="false"
+                    [[ "$pkg_input" =~ 3 ]] && do_redis="true" || do_redis="false"
+                    [[ "$pkg_input" =~ 4 ]] && do_docker="true" || do_docker="false"
+                    [[ "$pkg_input" =~ 5 ]] && do_site_cli="true" || do_site_cli="false"
+                    ;;
+                none|NONE|0)
+                    do_frankenphp="false"; do_mariadb="false"; do_redis="false"; do_docker="false"; do_site_cli="false"
+                    ;;
+                *)
+                    echo
+                    ask_yes_no "  [1/5] Install FrankenPHP (Caddy + PHP)?" "Y" && do_frankenphp="true" || do_frankenphp="false"
+                    ask_yes_no "  [2/5] Install MariaDB Server & Client?" "Y" && do_mariadb="true" || do_mariadb="false"
+                    ask_yes_no "  [3/5] Install Redis Server?" "Y" && do_redis="true" || do_redis="false"
+                    ask_yes_no "  [4/5] Install Docker Engine & Compose v2?" "N" && do_docker="true" || do_docker="false"
+                    ask_yes_no "  [5/5] Install site-cli (/usr/local/bin/site-cli)?" "Y" && do_site_cli="true" || do_site_cli="false"
+                    ;;
+            esac
+        fi
+    fi
+
+    [[ "$do_frankenphp" == "true" ]] && install_component_frankenphp
+    [[ "$do_mariadb" == "true" ]] && install_component_mariadb
+    [[ "$do_redis" == "true" ]] && install_component_redis
+    [[ "$do_docker" == "true" ]] && install_component_docker
+    [[ "$do_site_cli" == "true" ]] && install_component_site_cli
+}
+
+offer_and_install_stack() {
+    local choice=""
+
+    if [[ -n "$CLI_STACK_CHOICE" ]]; then
+        case "$CLI_STACK_CHOICE" in
+            frankenphp|lemp|native|all|full)
+                choice=1
+                ;;
+            custom)
+                choice=2
+                ;;
+            docker)
+                choice=3
+                ;;
+            none|skip)
+                choice=4
+                ;;
+            *)
+                warn "Unknown --stack option '${CLI_STACK_CHOICE}'. Skipping stack installation."
+                choice=4
+                ;;
+        esac
+    elif [[ "$NON_INTERACTIVE" == "true" || ! -e /dev/tty || ! -r /dev/tty ]]; then
+        choice=4
+    elif [[ "$INSTALL_MODE" != "tune-only" ]]; then
+        # Control Plane mode: only install extra stacks if explicitly requested via CLI flags
+        choice=4
+    else
+        echo
+        echo -e "  ${BOLD}${CYAN}Software Stack Installation (Optional)${NC}"
+        echo "    1) Full FrankenPHP Stack (FrankenPHP + MariaDB + Redis + site-cli)"
+        echo "    2) Custom component selection (FrankenPHP, MariaDB, Redis, Docker, site-cli)"
+        echo "    3) Docker Engine & Compose v2"
+        echo "    4) Skip software stack installation (OS tuning only)"
+        echo
+
+        local user_input=""
+        while true; do
+            if ! read -r -p "  Select [1-4]: " user_input </dev/tty; then
+                choice=4
+                break
+            fi
+            user_input="${user_input//[$'\r\n\t ']/}"
+            case "$user_input" in
+                1|2|3|4) choice="$user_input"; break ;;
+                *) echo -e "  ${YELLOW}Enter a number from 1 to 4.${NC}" ;;
+            esac
+        done
+    fi
+
+    case "$choice" in
+        1) install_full_frankenphp_stack ;;
+        2) install_custom_selection ;;
+        3) install_component_docker ;;
+        4|*) log "Optional software stack installation skipped." ;;
+    esac
+}
+
+print_tune_only_summary() {
+    clear 2>/dev/null || true
+    section "Server Tuning Complete"
+    echo -e "${GREEN}${BOLD}Server tuning and stack setup finished!${NC}"
+    echo
+    printf "  ${DIM}%-18s${NC}  %s\n" "Mode"       "TUNE-ONLY (no OpenShip)"
+    printf "  ${DIM}%-18s${NC}  %s\n" "Hostname"   "${HOSTNAME_INPUT}"
+    printf "  ${DIM}%-18s${NC}  %s\n" "Timezone"   "${TIMEZONE_INPUT}"
+    printf "  ${DIM}%-18s${NC}  %s:%s\n" "SSH"     "${ADMIN_USER_INPUT}" "${SSH_PORT_INPUT}"
+    printf "  ${DIM}%-18s${NC}  %s\n" "UFW"        "${ENABLE_UFW}"
+    printf "  ${DIM}%-18s${NC}  %s\n" "Fail2ban"   "${ENABLE_FAIL2BAN}"
+    printf "  ${DIM}%-18s${NC}  %s GB\n" "Swap"     "${SWAP_SIZE_GB:-2}"
+    if [[ ${#INSTALLED_COMPONENTS[@]} -gt 0 ]]; then
+        echo
+        echo "  Installed components:"
+        for comp in "${INSTALLED_COMPONENTS[@]}"; do
+            echo "    • ${comp}"
+        done
+    fi
+    echo
+    echo "  Next:"
+    echo "    • Security audit: sudo ./doctor.sh --audit"
+    if command_exists site-cli; then
+        echo "    • Create site:    sudo site-cli create example.com --template laravel --ssl"
+    fi
+    echo
+}
+
+# ==============================================================================
 # Main Entry Point
 # ==============================================================================
 
@@ -3025,6 +3495,7 @@ main() {
     configure_timezone
 
     install_and_update_packages
+    check_and_remove_apache
     optimize_system
 
     configure_swap
@@ -3034,6 +3505,13 @@ main() {
     configure_ufw
     configure_fail2ban
     configure_unattended_upgrades
+
+    offer_and_install_stack
+
+    if [[ "$INSTALL_MODE" == "tune-only" ]]; then
+        print_tune_only_summary
+        return 0
+    fi
 
     install_docker
     configure_docker

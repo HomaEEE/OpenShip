@@ -747,14 +747,14 @@
 
         <div class="guide-item">
           <div class="guide-item-header">
-            <span>2. Diagnostics & Doctor</span>
+            <span>2. Diagnostics &amp; VPS Security Audit</span>
             <span class="guide-item-badge">Audit</span>
           </div>
           <div class="guide-code-box">
-            <span class="guide-code" id="cmd-doctor">curl -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/doctor.sh | sudo bash</span>
+            <span class="guide-code" id="cmd-doctor">curl -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/doctor.sh | sudo bash -s -- --audit</span>
             <button class="guide-copy-btn" onclick="copySnippet('cmd-doctor')">Copy</button>
           </div>
-          <div class="guide-item-desc">Tests ports :3001/:4000, Caddy proxying, UFW firewall, memory, and services.</div>
+          <div class="guide-item-desc">Runs VPS security audit (SSH, UFW, exposed DB ports, Fail2ban, updates, SUID, FrankenPHP). Omit <code>--audit</code> for full OpenShip check.</div>
         </div>
 
         <div class="guide-item">
@@ -775,20 +775,20 @@
     <div class="presets-title">⚡ Quick Presets</div>
     <div class="preset-grid">
       <div class="preset-btn active" onclick="applyPreset('bare-cf-flex')">
-        <div class="preset-name">🚀 Minimal VPS (1GB / Bare)</div>
-        <div class="preset-desc">Node runtime, embedded DB, Cloudflare Flexible, zRAM 50%, Caddy reverse-proxy.</div>
-      </div>
-      <div class="preset-btn" onclick="applyPreset('bare-cf-origin')">
-        <div class="preset-name">🔒 Cloudflare Origin CA</div>
-        <div class="preset-desc">Bare mode with 15-yr Cloudflare Origin SSL certificates (Full / Strict mode).</div>
+        <div class="preset-name">🚀 Control VPS (Bare + Caddy)</div>
+        <div class="preset-desc">Lightweight Node + embedded DB, Caddy proxy, strict isolation (no Docker).</div>
       </div>
       <div class="preset-btn" onclick="applyPreset('standard-docker')">
-        <div class="preset-name">🐳 Full Docker Stack (4GB+)</div>
+        <div class="preset-name">🐳 Control VPS (Full Docker)</div>
         <div class="preset-desc">Standard Docker Compose stack (Postgres + Redis) with Let's Encrypt auto-TLS.</div>
       </div>
-      <div class="preset-btn" onclick="applyPreset('private-mode')">
-        <div class="preset-name">🛡️ Private / Intranet</div>
-        <div class="preset-desc">No public ports, local port :3001 only, strict isolation without host terminal.</div>
+      <div class="preset-btn" onclick="applyPreset('worker-frankenphp')">
+        <div class="preset-name">⚡ Worker VPS (FrankenPHP)</div>
+        <div class="preset-desc">Tune-only + FrankenPHP (Caddy/PHP) + MariaDB + Redis + site-cli (no OpenShip).</div>
+      </div>
+      <div class="preset-btn" onclick="applyPreset('worker-docker')">
+        <div class="preset-name">📦 Worker VPS (Docker)</div>
+        <div class="preset-desc">Tune-only + OS hardening + Docker Engine &amp; Compose v2 (no OpenShip).</div>
       </div>
     </div>
 
@@ -816,10 +816,15 @@
                 <div class="radio-card-title">🐳 Standard Docker</div>
                 <div class="radio-card-desc">Full Compose stack (Postgres + Redis). Recommended for 2GB+ RAM.</div>
               </label>
+              <label class="radio-card" id="card-mode-tune-only">
+                <input type="radio" name="install_mode" value="tune-only" onchange="updateMode('tune-only')">
+                <div class="radio-card-title">🛠️ Tune &amp; Stacks Only</div>
+                <div class="radio-card-desc">OS tuning + FrankenPHP / MariaDB / Redis / Docker (no OpenShip panel).</div>
+              </label>
             </div>
           </div>
 
-          <div class="toggle-row">
+          <div class="toggle-row" id="card-host-control-row">
             <div class="toggle-info">
               <span class="toggle-title">Host Control Terminal</span>
               <span class="toggle-desc">Allow OpenShip web dashboard to open an SSH terminal to this Control VPS.</span>
@@ -831,8 +836,83 @@
           </div>
         </div>
 
+        <!-- Card: Software Stacks -->
+        <div class="card" id="card-stacks">
+          <div class="card-header">
+            <div class="card-icon">📦</div>
+            <div class="card-title">Software Stacks (Optional)</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Stack Preset</label>
+            <select id="stack_preset" class="form-select" onchange="updateStackPreset()">
+              <option value="none" selected>None (OS tuning / OpenShip only)</option>
+              <option value="frankenphp">Full FrankenPHP Stack (FrankenPHP + MariaDB + Redis + site-cli)</option>
+              <option value="docker">Docker Engine &amp; Compose v2</option>
+              <option value="custom">Custom Component Selection</option>
+            </select>
+          </div>
+
+          <div id="custom-stack-panel" style="display: none;">
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title">FrankenPHP (Caddy + PHP)</span>
+                <span class="toggle-desc">Single-binary web server with auto-SSL and embedded PHP.</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="with_frankenphp" onchange="updateOutput()">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title">MariaDB Server &amp; Client</span>
+                <span class="toggle-desc">Relational database bound to 127.0.0.1:3306.</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="with_mariadb" onchange="updateOutput()">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title">Redis Cache</span>
+                <span class="toggle-desc">In-memory cache &amp; queue bound to 127.0.0.1:6379.</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="with_redis" onchange="updateOutput()">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title">Docker Engine &amp; Compose v2</span>
+                <span class="toggle-desc">Install Docker runtime for containerized workloads.</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="with_docker" onchange="updateOutput()">
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <span class="toggle-title">site-cli (/usr/local/bin/site-cli)</span>
+                <span class="toggle-desc">CLI manager for FrankenPHP sites, SSL, and MariaDB databases.</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" id="with_site_cli" onchange="updateOutput()">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div id="frankenphp-port-warning" class="alert-box" style="display: none; margin-top: 0.75rem;">
+            <strong>⚠️ Port Notice:</strong> OpenShip proxy (Caddy/Edge) owns <code>:80/:443</code>, so FrankenPHP will bind locally to <code>:8080</code>.
+          </div>
+        </div>
+
         <!-- Card: Domain & SSL -->
-        <div class="card">
+        <div class="card" id="card-domain-ssl">
           <div class="card-header">
             <div class="card-icon">🌐</div>
             <div class="card-title">Domain & SSL Routing</div>
@@ -879,7 +959,7 @@
         </div>
 
         <!-- Card: Admin Credentials -->
-        <div class="card">
+        <div class="card" id="card-admin-creds">
           <div class="card-header">
             <div class="card-icon">🔑</div>
             <div class="card-title">OpenShip Administrator</div>
@@ -1041,6 +1121,16 @@
       document.querySelectorAll('input[name="install_mode"]').forEach(r => {
         r.closest('.radio-card').classList.toggle('selected', r.value === mode);
       });
+      const isTuneOnly = (mode === 'tune-only');
+      document.getElementById('card-host-control-row').style.display = isTuneOnly ? 'none' : 'flex';
+      document.getElementById('card-domain-ssl').style.display = isTuneOnly ? 'none' : 'block';
+      document.getElementById('card-admin-creds').style.display = isTuneOnly ? 'none' : 'block';
+      updateOutput();
+    }
+
+    function updateStackPreset() {
+      const preset = document.getElementById('stack_preset').value;
+      document.getElementById('custom-stack-panel').style.display = (preset === 'custom') ? 'block' : 'none';
       updateOutput();
     }
 
@@ -1088,32 +1178,38 @@
 
     function applyPreset(preset) {
       document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
-      event.currentTarget.classList.add('active');
+      if (typeof event !== 'undefined' && event.currentTarget) {
+        event.currentTarget.classList.add('active');
+      }
 
       if (preset === 'bare-cf-flex') {
+        document.querySelector('input[name="install_mode"][value="bare"]').checked = true;
         updateMode('bare');
         document.getElementById('proxy_mode').value = 'caddy';
         document.getElementById('ssl_mode').value = 'cloudflare_flexible';
-        document.getElementById('host_control').checked = true;
+        document.getElementById('host_control').checked = false;
         document.getElementById('swap_size').value = '2';
-      } else if (preset === 'bare-cf-origin') {
-        updateMode('bare');
-        document.getElementById('proxy_mode').value = 'caddy';
-        document.getElementById('ssl_mode').value = 'cloudflare_origin';
-        document.getElementById('host_control').checked = true;
-        document.getElementById('swap_size').value = '2';
+        document.getElementById('stack_preset').value = 'none';
       } else if (preset === 'standard-docker') {
+        document.querySelector('input[name="install_mode"][value="standard"]').checked = true;
         updateMode('standard');
         document.getElementById('proxy_mode').value = 'caddy';
         document.getElementById('ssl_mode').value = 'auto';
         document.getElementById('host_control').checked = true;
         document.getElementById('swap_size').value = '4';
-      } else if (preset === 'private-mode') {
-        updateMode('bare');
-        document.getElementById('proxy_mode').value = 'none';
-        document.getElementById('host_control').checked = false;
-        document.getElementById('domain').value = '';
+        document.getElementById('stack_preset').value = 'none';
+      } else if (preset === 'worker-frankenphp') {
+        document.querySelector('input[name="install_mode"][value="tune-only"]').checked = true;
+        updateMode('tune-only');
+        document.getElementById('stack_preset').value = 'frankenphp';
+        document.getElementById('swap_size').value = '2';
+      } else if (preset === 'worker-docker') {
+        document.querySelector('input[name="install_mode"][value="tune-only"]').checked = true;
+        updateMode('tune-only');
+        document.getElementById('stack_preset').value = 'docker';
+        document.getElementById('swap_size').value = '2';
       }
+      updateStackPreset();
       updateProxyMode();
     }
 
@@ -1126,6 +1222,7 @@
 
     function updateOutput() {
       const mode = document.querySelector('input[name="install_mode"]:checked').value;
+      const isTuneOnly = (mode === 'tune-only');
       const hostControl = document.getElementById('host_control').checked;
       const domain = document.getElementById('domain').value.trim();
       const proxyMode = document.getElementById('proxy_mode').value;
@@ -1136,6 +1233,17 @@
       const adminName = document.getElementById('admin_name').value.trim();
       const adminEmail = document.getElementById('admin_email').value.trim();
       const adminPassword = document.getElementById('admin_password').value.trim();
+
+      const stackPreset = document.getElementById('stack_preset').value;
+      const withFrankenphp = document.getElementById('with_frankenphp').checked;
+      const withMariadb = document.getElementById('with_mariadb').checked;
+      const withRedis = document.getElementById('with_redis').checked;
+      const withDocker = document.getElementById('with_docker').checked;
+      const withSiteCli = document.getElementById('with_site_cli').checked;
+
+      const usesFrankenphp = (stackPreset === 'frankenphp') || (stackPreset === 'custom' && withFrankenphp);
+      document.getElementById('frankenphp-port-warning').style.display =
+        (!isTuneOnly && proxyMode !== 'none' && usesFrankenphp) ? 'block' : 'none';
 
       const hostname = document.getElementById('hostname').value.trim();
       const timezone = document.getElementById('timezone').value.trim();
@@ -1149,17 +1257,31 @@
       const isDryRun = document.getElementById('flag_dry_run').checked;
 
       const flags = [];
-      flags.push(`--mode=${mode}`);
-      if (!hostControl) flags.push(`--no-host-control`);
-      if (domain) flags.push(`--domain=${domain}`);
-      flags.push(`--proxy-mode=${proxyMode}`);
-      if (proxyMode !== 'none') flags.push(`--ssl-mode=${sslMode}`);
-      if (originCert) flags.push(`--origin-cert="${originCert.replace(/\n/g, '\\n')}"`);
-      if (originKey) flags.push(`--origin-key="${originKey.replace(/\n/g, '\\n')}"`);
+      if (isTuneOnly) {
+        flags.push(`--tune-only`);
+      } else {
+        flags.push(`--mode=${mode}`);
+        if (!hostControl) flags.push(`--no-host-control`);
+        if (domain) flags.push(`--domain=${domain}`);
+        flags.push(`--proxy-mode=${proxyMode}`);
+        if (proxyMode !== 'none') flags.push(`--ssl-mode=${sslMode}`);
+        if (originCert) flags.push(`--origin-cert="${originCert.replace(/\n/g, '\\n')}"`);
+        if (originKey) flags.push(`--origin-key="${originKey.replace(/\n/g, '\\n')}"`);
 
-      if (adminName && adminName !== 'Admin') flags.push(`--admin-name="${adminName}"`);
-      if (adminEmail) flags.push(`--admin-email="${adminEmail}"`);
-      if (adminPassword) flags.push(`--admin-password="${adminPassword}"`);
+        if (adminName && adminName !== 'Admin') flags.push(`--admin-name="${adminName}"`);
+        if (adminEmail) flags.push(`--admin-email="${adminEmail}"`);
+        if (adminPassword) flags.push(`--admin-password="${adminPassword}"`);
+      }
+
+      if (stackPreset === 'frankenphp' || stackPreset === 'docker') {
+        flags.push(`--stack=${stackPreset}`);
+      } else if (stackPreset === 'custom') {
+        if (withFrankenphp) flags.push(`--with-frankenphp`);
+        if (withMariadb) flags.push(`--with-mariadb`);
+        if (withRedis) flags.push(`--with-redis`);
+        if (withDocker) flags.push(`--with-docker`);
+        if (withSiteCli) flags.push(`--with-site-cli`);
+      }
 
       if (hostname && hostname !== 'openship-control') flags.push(`--hostname=${hostname}`);
       if (timezone && timezone !== 'UTC') flags.push(`--timezone=${timezone}`);
@@ -1234,6 +1356,12 @@
           adminName: document.getElementById('admin_name').value,
           adminEmail: document.getElementById('admin_email').value,
           adminPassword: document.getElementById('admin_password').value,
+          stackPreset: document.getElementById('stack_preset').value,
+          withFrankenphp: document.getElementById('with_frankenphp').checked,
+          withMariadb: document.getElementById('with_mariadb').checked,
+          withRedis: document.getElementById('with_redis').checked,
+          withDocker: document.getElementById('with_docker').checked,
+          withSiteCli: document.getElementById('with_site_cli').checked,
           hostname: document.getElementById('hostname').value,
           timezone: document.getElementById('timezone').value,
           sshPort: document.getElementById('ssh_port').value,
@@ -1278,6 +1406,14 @@
         if (data.adminName !== undefined) document.getElementById('admin_name').value = data.adminName;
         if (data.adminEmail !== undefined) document.getElementById('admin_email').value = data.adminEmail;
         if (data.adminPassword !== undefined) document.getElementById('admin_password').value = data.adminPassword;
+
+        if (data.stackPreset !== undefined) document.getElementById('stack_preset').value = data.stackPreset;
+        if (typeof data.withFrankenphp === 'boolean') document.getElementById('with_frankenphp').checked = data.withFrankenphp;
+        if (typeof data.withMariadb === 'boolean') document.getElementById('with_mariadb').checked = data.withMariadb;
+        if (typeof data.withRedis === 'boolean') document.getElementById('with_redis').checked = data.withRedis;
+        if (typeof data.withDocker === 'boolean') document.getElementById('with_docker').checked = data.withDocker;
+        if (typeof data.withSiteCli === 'boolean') document.getElementById('with_site_cli').checked = data.withSiteCli;
+        updateStackPreset();
 
         if (data.hostname !== undefined) document.getElementById('hostname').value = data.hostname;
         if (data.timezone !== undefined) document.getElementById('timezone').value = data.timezone;
