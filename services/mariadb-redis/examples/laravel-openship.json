@@ -2,9 +2,18 @@
   "$schema": "https://openship.io/openship.schema.json",
   "framework": "laravel",
   "runtimeVersion": "8.4",
-  "installCommand": "composer install --no-dev --optimize-autoloader",
-  "buildCommand": "npm i --force && npm run build",
-  "startCommand": "mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache && exec frankenphp run --config /etc/frankenphp/Caddyfile --adapter caddyfile",
+  "autoDeployPaths": {
+    "exclude": [
+      "tests/**",
+      "docs/**",
+      "*.md",
+      ".gitignore",
+      "phpunit.xml"
+    ]
+  },
+  "startCommand": "mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache && (php -r '$h=getenv(\"DB_HOST\")?:\"mariadb\";$p=(int)(getenv(\"DB_PORT\")?:3306);$d=getenv(\"DB_DATABASE\")?:\"\";$u=getenv(\"DB_USERNAME\")?:\"\";$pw=getenv(\"DB_PASSWORD\")?:\"\";$rp=getenv(\"DB_ROOT_PASSWORD\")?:getenv(\"MARIADB_ROOT_PASSWORD\")?:getenv(\"MYSQL_ROOT_PASSWORD\")?:\"\";if(!$d||!$u||!($s=@fsockopen($h,$p,$e,$t,2)))exit(1);fclose($s);$o=[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_TIMEOUT=>5];try{new PDO(\"mysql:host=$h;port=$p;dbname=$d;charset=utf8mb4\",$u,$pw,$o);exit(0);}catch(Throwable){}if(!$rp||!$pw||!preg_match(\"/^\\w+$/\",$d)||!preg_match(\"/^\\w+$/\",$u))exit(1);$r=new PDO(\"mysql:host=$h;port=$p;charset=utf8mb4\",\"root\",$rp,$o);$qu=$r->quote($u);$qa=$r->quote(\"%\");$q=$r->quote($pw);$r->exec(\"CREATE DATABASE IF NOT EXISTS `$d` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\");$r->exec(\"CREATE USER IF NOT EXISTS $qu@$qa IDENTIFIED BY $q\");$r->exec(\"ALTER USER $qu@$qa IDENTIFIED BY $q\");$r->exec(\"GRANT ALL PRIVILEGES ON `$d`.* TO $qu@$qa\");$r->exec(\"FLUSH PRIVILEGES\");' && php artisan migrate --force || echo \"[boot] DB not ready, skipping migrations\") && exec frankenphp run --config /etc/frankenphp/Caddyfile --adapter caddyfile",
+  "installCommand": "composer install --no-dev --optimize-autoloader --classmap-authoritative --prefer-dist --no-interaction && rm -rf /root/.composer/cache",
+  "buildCommand": "(npm ci --no-audit --no-fund || npm i --force --no-audit --no-fund) && npm run build && rm -rf node_modules /root/.npm",
   "optimize": true,
   "port": 80,
   "domains": [
@@ -45,19 +54,22 @@
       "value": "",
       "secret": true
     },
+    "DB_ROOT_PASSWORD": {
+      "value": "",
+      "secret": true
+    },
     "REDIS_CLIENT": "phpredis",
     "REDIS_HOST": "redis",
     "REDIS_PORT": "6379",
-    "REDIS_PREFIX": "my_app_",
+    "REDIS_PASSWORD": {
+      "value": "",
+      "secret": true
+    },
+    "REDIS_PREFIX": "my_app_db_",
     "CACHE_STORE": "redis",
     "SESSION_DRIVER": "redis",
-    "QUEUE_CONNECTION": "redis",
+    "QUEUE_CONNECTION": "sync",
     "FILESYSTEM_DISK": "local",
     "SERVER_NAME": "http://:80"
-  },
-  "releaseCommands": [
-    "php -r '$k=getenv(\"APP_KEY\");$p=getenv(\"DB_PASSWORD\");if(!$k||!$p){fwrite(STDERR,\"Missing required APP_KEY or DB_PASSWORD\\n\");exit(1);}$r=getenv(\"DB_ROOT_PASSWORD\");$d=getenv(\"DB_DATABASE\");$u=getenv(\"DB_USERNAME\");$h=getenv(\"DB_HOST\")?:\"mariadb\";$port=getenv(\"DB_PORT\")?:\"3306\";if(!$r||!$d||!$u){fwrite(STDERR,\"Skip DB auto-provision: link DB service to inject DB_ROOT_PASSWORD\\n\");exit(0);}if(!preg_match(\"/^[A-Za-z0-9_]+$/\",$d)||!preg_match(\"/^[A-Za-z0-9_]+$/\",$u)){fwrite(STDERR,\"Invalid DB_DATABASE or DB_USERNAME\\n\");exit(1);}try{$pdo=new PDO(\"mysql:host=$h;port=$port;charset=utf8mb4\",\"root\",$r,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$pdo->exec(\"CREATE DATABASE IF NOT EXISTS `$d` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\");$s=$pdo->prepare(\"CREATE USER IF NOT EXISTS ?@\\\"%\\\" IDENTIFIED BY ?\");$s->execute([$u,$p]);$s=$pdo->prepare(\"ALTER USER ?@\\\"%\\\" IDENTIFIED BY ?\");$s->execute([$u,$p]);$pdo->exec(\"GRANT ALL PRIVILEGES ON `$d`.* TO \\\"$u\\\"@\\\"%\\\"\");$pdo->exec(\"FLUSH PRIVILEGES\");echo \"DB & user ready: $d ($u)\\n\";}catch(PDOException $e){fwrite(STDERR,\"DB provision failed ($h:$port): \".$e->getMessage().\" — link MariaDB app in OpenShip (Use in a project / Topology)\\n\");exit(1);}'",
-    "php artisan migrate --force",
-    "php artisan optimize"
-  ]
+  }
 }
