@@ -1362,6 +1362,8 @@ configure_ssh() {
         echo
         echo "PubkeyAuthentication yes"
         echo "KbdInteractiveAuthentication no"
+        echo "PermitEmptyPasswords no"
+        echo "MaxAuthTries 3"
         echo
         echo "X11Forwarding no"
         echo "AllowAgentForwarding no"
@@ -1483,15 +1485,61 @@ configure_fail2ban() {
 enabled = true
 port = ${SSH_PORT_INPUT}
 backend = systemd
-maxretry = 5
+maxretry = 3
 findtime = 10m
 bantime = 1h
+bantime.increment = true
+bantime.factor = 2
+bantime.maxtime = 1w
 EOF
 
     systemctl enable fail2ban
     systemctl restart fail2ban
 
     success "Fail2ban enabled."
+}
+
+# ------------------------------------------------------------------------------
+# Security Policies (Sudo logging & Password policy)
+# ------------------------------------------------------------------------------
+
+configure_security_policies() {
+    section "Security policies (sudo logging & password length)"
+
+    # 1. Sudo command logging
+    mkdir -p /etc/sudoers.d
+    cat > /etc/sudoers.d/99-openship-logging <<'EOF'
+Defaults logfile="/var/log/sudo.log"
+EOF
+    chmod 440 /etc/sudoers.d/99-openship-logging
+    if command_exists visudo && ! visudo -cf /etc/sudoers.d/99-openship-logging >/dev/null 2>&1; then
+        warn "visudo validation failed for /etc/sudoers.d/99-openship-logging; removing file."
+        rm -f /etc/sudoers.d/99-openship-logging
+    else
+        success "Sudo command logging enabled (/var/log/sudo.log)."
+    fi
+
+    # 2. Password minimum length policy (minlen=12)
+    if [[ -f /etc/security/pwquality.conf ]]; then
+        if grep -qE '^[#[:space:]]*minlen[[:space:]]*=' /etc/security/pwquality.conf; then
+            sed -i -E 's/^[#[:space:]]*minlen[[:space:]]*=.*/minlen = 12/' /etc/security/pwquality.conf
+        else
+            echo "minlen = 12" >> /etc/security/pwquality.conf
+        fi
+    else
+        mkdir -p /etc/security/pwquality.conf.d
+        echo "minlen = 12" > /etc/security/pwquality.conf.d/99-openship.conf
+    fi
+
+    if [[ -f /etc/login.defs ]]; then
+        if grep -qE '^[#[:space:]]*PASS_MIN_LEN[[:space:]]+' /etc/login.defs; then
+            sed -i -E 's/^[#[:space:]]*PASS_MIN_LEN[[:space:]]+.*/PASS_MIN_LEN\t12/' /etc/login.defs
+        else
+            echo -e "PASS_MIN_LEN\t12" >> /etc/login.defs
+        fi
+    fi
+
+    success "Password minimum length policy set to 12."
 }
 
 # ------------------------------------------------------------------------------
@@ -2348,25 +2396,40 @@ run_bare_openship_setup() {
 
     openship "${args[@]}"
 
-    # Ensure systemd service persistently sets public URL and trusted origins for terminal WebSockets & GitHub App manifests
+    # Ensure systemd service persistently sets NODE_OPTIONS (and public URL / trusted origins if set)
+    local node_heap_mb=512
+    if (( RAM_MB <= 1024 )); then
+        node_heap_mb=384
+    elif (( RAM_MB <= 2048 )); then
+        node_heap_mb=512
+    else
+        node_heap_mb=1024
+    fi
+
+    mkdir -p /etc/systemd/system/openship.service.d
+    {
+        echo "[Service]"
+        echo "Environment=\"NODE_OPTIONS=--max-old-space-size=${node_heap_mb}\""
+        if [[ -n "$OPENSHIP_PUBLIC_URL" ]]; then
+            echo "Environment=\"OPENSHIP_PUBLIC_URL=${OPENSHIP_PUBLIC_URL}\""
+            echo "Environment=\"OPENSHIP_EXTRA_TRUSTED_ORIGINS=${OPENSHIP_PUBLIC_URL},http://${OPENSHIP_HOST},https://${OPENSHIP_HOST}\""
+        fi
+    } > /etc/systemd/system/openship.service.d/override.conf
+
     if [[ -n "$OPENSHIP_PUBLIC_URL" ]]; then
         mkdir -p /root/.openship
         echo "{\"publicUrl\":\"${OPENSHIP_PUBLIC_URL}\"}" > /root/.openship/instance.json
-        mkdir -p /etc/systemd/system/openship.service.d
-        cat > /etc/systemd/system/openship.service.d/override.conf <<EOF
-[Service]
-Environment="OPENSHIP_PUBLIC_URL=${OPENSHIP_PUBLIC_URL}"
-Environment="OPENSHIP_EXTRA_TRUSTED_ORIGINS=${OPENSHIP_PUBLIC_URL},http://${OPENSHIP_HOST},https://${OPENSHIP_HOST}"
-EOF
         if [[ -f /etc/systemd/system/openship.service ]]; then
             sed -i -E 's|up --foreground|up --foreground --port 4000 --dashboard-port 3001 --host 127.0.0.1 --public-url '"${OPENSHIP_PUBLIC_URL}"'|g' /etc/systemd/system/openship.service 2>/dev/null || true
             sed -i 's/--port [0-9]* --port/--port/g' /etc/systemd/system/openship.service 2>/dev/null || true
             sed -i 's/--dashboard-port [0-9]* --dashboard-port/--dashboard-port/g' /etc/systemd/system/openship.service 2>/dev/null || true
             sed -i 's/--public-url [^ ]* --public-url/--public-url/g' /etc/systemd/system/openship.service 2>/dev/null || true
         fi
-        systemctl daemon-reload 2>/dev/null || true
-        systemctl restart openship 2>/dev/null || true
     fi
+
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl restart openship 2>/dev/null || true
+    log "Configured OpenShip Bare Node heap limit: --max-old-space-size=${node_heap_mb} (${RAM_MB} MB RAM)."
 
     unset OPENSHIP_ADMIN_PASSWORD
     unset OPENSHIP_ADMIN_PASSWORD_INPUT
@@ -2736,6 +2799,16 @@ collect_configuration() {
     fi
 
     if [[ "$NON_INTERACTIVE" == "true" ]]; then
+        local auto_swap=2
+        if (( ${DISK_GB:-20} < 15 )); then
+            auto_swap=1
+        elif (( RAM_MB < 2048 )); then
+            auto_swap=2
+        elif (( RAM_MB <= 4096 )); then
+            auto_swap=4
+        else
+            auto_swap=2
+        fi
         HOSTNAME_INPUT="${HOSTNAME_INPUT:-openship-control}"
         TIMEZONE_INPUT="${TIMEZONE_INPUT:-UTC}"
         SSH_PORT_INPUT="${SSH_PORT_INPUT:-22}"
@@ -2743,7 +2816,7 @@ collect_configuration() {
         ENABLE_UFW="${ENABLE_UFW:-true}"
         ENABLE_FAIL2BAN="${ENABLE_FAIL2BAN:-true}"
         ENABLE_SWAP="${ENABLE_SWAP:-true}"
-        SWAP_SIZE_GB="${SWAP_SIZE_GB:-2}"
+        SWAP_SIZE_GB="${SWAP_SIZE_GB:-$auto_swap}"
         if [[ "$INSTALL_MODE" == "bare" ]]; then
             collect_bare_openship_credentials
         fi
@@ -2894,8 +2967,14 @@ collect_configuration() {
 
     # Swap
     local rec_swap=2
-    if (( RAM_MB > 2048 )); then
+    if (( ${DISK_GB:-20} < 15 )); then
+        rec_swap=1
+    elif (( RAM_MB < 2048 )); then
+        rec_swap=2
+    elif (( RAM_MB <= 4096 )); then
         rec_swap=4
+    else
+        rec_swap=2
     fi
 
     if [[ -z "${ENABLE_SWAP:-}" ]]; then
@@ -3205,36 +3284,113 @@ EOF
     INSTALLED_COMPONENTS+=("FrankenPHP ${fp_ver} (${listen_port})")
 }
 
+detect_storage_type() {
+    if ls /sys/block/nvme* >/dev/null 2>&1; then
+        echo "nvme"
+        return 0
+    fi
+    local root_src base_dev
+    root_src="$(findmnt -n -o SOURCE / 2>/dev/null || true)"
+    base_dev="$(basename "${root_src}" 2>/dev/null | sed -E 's/[0-9]+$//; s/p[0-9]+$//' || true)"
+    if [[ -n "$base_dev" && -f "/sys/block/${base_dev}/queue/rotational" ]]; then
+        if [[ "$(cat "/sys/block/${base_dev}/queue/rotational" 2>/dev/null || echo 1)" == "0" ]]; then
+            echo "ssd"
+            return 0
+        fi
+        echo "hdd"
+        return 0
+    fi
+    echo "ssd"
+}
+
 install_component_mariadb() {
     section "Installing MariaDB Server & Client"
 
     if [[ "$DRY_RUN" == "true" ]]; then
-        log "[DRY RUN] Would install MariaDB Server & Client."
+        log "[DRY RUN] Would install MariaDB Server & Client with hardware auto-tuning."
         INSTALLED_COMPONENTS+=("MariaDB Server (127.0.0.1:3306)")
         return 0
     fi
 
     export DEBIAN_FRONTEND=noninteractive
     run_task "Installing MariaDB packages" apt-get install -y -qq mariadb-server mariadb-client
+
+    local pool_size="128M" max_conn=60 perf_schema="ON" io_cap=1000 io_max=2000 storage_type
+    storage_type="$(detect_storage_type)"
+    if (( RAM_MB <= 1024 )); then
+        pool_size="64M"; max_conn=30; perf_schema="OFF"
+    elif (( RAM_MB <= 2048 )); then
+        pool_size="128M"; max_conn=60; perf_schema="OFF"
+    elif (( RAM_MB <= 4096 )); then
+        pool_size="512M"; max_conn=150
+    elif (( RAM_MB <= 8192 )); then
+        pool_size="1G"; max_conn=150
+    else
+        pool_size="2G"; max_conn=200
+    fi
+
+    case "$storage_type" in
+        nvme) io_cap=2000; io_max=4000 ;;
+        ssd)  io_cap=1000; io_max=2000 ;;
+        hdd)  io_cap=200;  io_max=400  ;;
+    esac
+
+    mkdir -p /etc/mysql/mariadb.conf.d
+    cat > /etc/mysql/mariadb.conf.d/99-openship-tuning.cnf <<EOF
+[mysqld]
+bind-address = 127.0.0.1
+innodb_buffer_pool_size = ${pool_size}
+max_connections = ${max_conn}
+innodb_io_capacity = ${io_cap}
+innodb_io_capacity_max = ${io_max}
+innodb_flush_log_at_trx_commit = 2
+performance_schema = ${perf_schema}
+EOF
+
     systemctl enable --now mariadb 2>/dev/null || true
-    success "MariaDB active on 127.0.0.1:3306."
-    INSTALLED_COMPONENTS+=("MariaDB Server (127.0.0.1:3306)")
+    systemctl restart mariadb 2>/dev/null || true
+    success "MariaDB active on 127.0.0.1:3306 (pool=${pool_size}, conn=${max_conn}, storage=${storage_type})."
+    INSTALLED_COMPONENTS+=("MariaDB Server (127.0.0.1:3306, pool=${pool_size})")
 }
 
 install_component_redis() {
     section "Installing Redis In-Memory Cache"
 
     if [[ "$DRY_RUN" == "true" ]]; then
-        log "[DRY RUN] Would install Redis Server."
+        log "[DRY RUN] Would install Redis Server with hardware auto-tuning."
         INSTALLED_COMPONENTS+=("Redis Cache (127.0.0.1:6379)")
         return 0
     fi
 
     export DEBIAN_FRONTEND=noninteractive
     run_task "Installing Redis server" apt-get install -y -qq redis-server
+
+    local redis_maxmem="128mb"
+    if (( RAM_MB <= 1024 )); then
+        redis_maxmem="48mb"
+    elif (( RAM_MB <= 2048 )); then
+        redis_maxmem="128mb"
+    else
+        redis_maxmem="256mb"
+    fi
+
+    if [[ -f /etc/redis/redis.conf ]]; then
+        if grep -qE '^[#[:space:]]*maxmemory[[:space:]]+' /etc/redis/redis.conf; then
+            sed -i -E "s/^[#[:space:]]*maxmemory[[:space:]]+.*/maxmemory ${redis_maxmem}/" /etc/redis/redis.conf
+        else
+            echo "maxmemory ${redis_maxmem}" >> /etc/redis/redis.conf
+        fi
+        if grep -qE '^[#[:space:]]*maxmemory-policy[[:space:]]+' /etc/redis/redis.conf; then
+            sed -i -E 's/^[#[:space:]]*maxmemory-policy[[:space:]]+.*/maxmemory-policy allkeys-lru/' /etc/redis/redis.conf
+        else
+            echo "maxmemory-policy allkeys-lru" >> /etc/redis/redis.conf
+        fi
+    fi
+
     systemctl enable --now redis-server 2>/dev/null || true
-    success "Redis active on 127.0.0.1:6379."
-    INSTALLED_COMPONENTS+=("Redis Cache (127.0.0.1:6379)")
+    systemctl restart redis-server 2>/dev/null || true
+    success "Redis active on 127.0.0.1:6379 (maxmemory=${redis_maxmem})."
+    INSTALLED_COMPONENTS+=("Redis Cache (127.0.0.1:6379, ${redis_maxmem})")
 }
 
 install_component_docker() {
@@ -3504,6 +3660,7 @@ main() {
 
     configure_ufw
     configure_fail2ban
+    configure_security_policies
     configure_unattended_upgrades
 
     offer_and_install_stack

@@ -377,9 +377,56 @@
     .dot-red { background: #ef4444; }
     .dot-yellow { background: #f59e0b; }
     .dot-green { background: #10b981; }
-    .terminal-tabs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.4rem; width: 100%; }
+    .terminal-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.4rem; width: 100%; }
     @media (max-width: 780px) { .terminal-tabs { grid-template-columns: repeat(3, 1fr); } }
     @media (max-width: 480px) { .terminal-tabs { grid-template-columns: repeat(2, 1fr); } }
+
+    .doctor-card {
+      margin-top: 1.5rem;
+      background: var(--bg-card);
+      border: 1px solid rgba(16, 185, 129, 0.28);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      backdrop-filter: blur(12px);
+    }
+    .doctor-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.9rem;
+      margin-top: 0.75rem;
+    }
+    @media (max-width: 820px) { .doctor-grid { grid-template-columns: 1fr; } }
+    .doctor-item {
+      background: #060911;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 0.9rem 1rem;
+    }
+    .doctor-item-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.84rem;
+      font-weight: 600;
+      margin-bottom: 0.45rem;
+    }
+    .doctor-cmd-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #0d1320;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.65rem;
+      margin-bottom: 0.45rem;
+    }
+    .doctor-cmd-row code {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: #34d399;
+      flex: 1;
+      word-break: break-all;
+    }
     .term-tab {
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--border-subtle);
@@ -461,6 +508,62 @@
       border-color: rgba(56, 189, 248, 0.25);
       color: #bae6fd;
     }
+    .alert-box.ok {
+      background: rgba(16, 185, 129, 0.1);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #a7f3d0;
+    }
+    .alert-box.danger {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #fecaca;
+    }
+
+    /* Server Specs & Auto-Recommendation */
+    .specs-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-accent);
+      border-radius: var(--radius-lg);
+      padding: 1.15rem 1.25rem;
+      margin-bottom: 1.5rem;
+      backdrop-filter: blur(12px);
+    }
+    .specs-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    @media (max-width: 900px) { .specs-grid { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 520px) { .specs-grid { grid-template-columns: 1fr; } }
+    .specs-grid .form-group { margin-bottom: 0; }
+
+    .rec-box {
+      margin-top: 0.95rem;
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius-md);
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .rec-details { font-size: 0.8rem; color: var(--text-main); line-height: 1.5; flex: 1; min-width: 240px; }
+    .rec-meta { font-size: 0.74rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 0.2rem; }
+    .rec-apply-btn {
+      background: linear-gradient(135deg, #10b981, #059669);
+      border: none;
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.55rem 0.95rem;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .rec-apply-btn:hover { filter: brightness(1.08); }
 
     /* Reference Accordion */
     .ref-section { margin-top: 2rem; }
@@ -549,6 +652,74 @@
         <div class="preset-desc" data-i18n="preset_wd_desc"></div>
       </button>
     </div>
+
+    <!-- Server Specs & Auto-Recommendation -->
+    <section class="specs-card">
+      <div class="card-header">
+        <span class="card-icon">🖥️</span>
+        <h2 class="card-title" data-i18n="specs_title">Server Hardware &amp; Auto-Recommendation</h2>
+      </div>
+      <p class="card-subtitle" style="margin-bottom: 0.35rem;" data-i18n="specs_subtitle"></p>
+
+      <div class="specs-grid">
+        <div class="form-group">
+          <label class="form-label" data-i18n="spec_ram_label">RAM</label>
+          <select id="spec_ram" class="form-select" onchange="onSpecsChanged()">
+            <option value="0.5">0.5 GB (512 MB)</option>
+            <option value="1" selected>1 GB</option>
+            <option value="2">2 GB</option>
+            <option value="4">4 GB</option>
+            <option value="8">8 GB</option>
+            <option value="16">16+ GB</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="spec_cpu_label">CPU (vCPU)</label>
+          <select id="spec_cpu" class="form-select" onchange="onSpecsChanged()">
+            <option value="1" selected>1 vCPU</option>
+            <option value="2">2 vCPU</option>
+            <option value="4">4 vCPU</option>
+            <option value="8">8+ vCPU</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="spec_disk_label">Disk (GB)</label>
+          <select id="spec_disk" class="form-select" onchange="onSpecsChanged()">
+            <option value="10">10 GB</option>
+            <option value="20" selected>20 GB</option>
+            <option value="40">40 GB</option>
+            <option value="80">80 GB</option>
+            <option value="160">160+ GB</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="spec_storage_label">Storage Type</label>
+          <select id="spec_storage" class="form-select" onchange="onSpecsChanged()">
+            <option value="nvme" selected>NVMe</option>
+            <option value="ssd">SSD (SATA)</option>
+            <option value="hdd">HDD</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" data-i18n="spec_goal_label">Server Role</label>
+          <select id="spec_goal" class="form-select" onchange="onSpecsChanged()">
+            <option value="control" selected data-i18n="goal_control">Control Plane</option>
+            <option value="worker" data-i18n="goal_worker">Worker (Sites / Apps)</option>
+            <option value="all-in-one" data-i18n="goal_aio">All-in-One</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="rec-box" id="recommendation-box">
+        <div class="rec-details">
+          <div id="rec-summary-text"></div>
+          <div class="rec-meta" id="rec-tuning-meta"></div>
+        </div>
+        <button type="button" class="rec-apply-btn" onclick="applyRecommendedProfile()" data-i18n="btn_apply_ideal">✨ Apply Ideal Settings</button>
+      </div>
+
+      <div class="alert-box ok" id="compat-banner" style="margin-top: 0.7rem;"></div>
+    </section>
 
     <div class="main-grid">
       <!-- Wizard Column -->
@@ -864,7 +1035,6 @@
               <button type="button" class="term-tab" id="tab-local" onclick="switchTab('local')">local script</button>
               <button type="button" class="term-tab" id="tab-env" onclick="switchTab('env')">env vars</button>
               <button type="button" class="term-tab" id="tab-interactive" onclick="switchTab('interactive')">interactive</button>
-              <button type="button" class="term-tab" id="tab-audit" onclick="switchTab('audit')">audit</button>
               <button type="button" class="term-tab" id="tab-git" onclick="switchTab('git')">git clone</button>
             </div>
           </div>
@@ -889,10 +1059,43 @@
             <span data-i18n="flag_dry_run_label">--dry-run (test only)</span>
           </label>
         </div>
-
-        <div class="alert-box info" data-i18n-html="audit_tip"></div>
       </div>
     </div>
+
+    <!-- Standalone Diagnostics & Security Audit -->
+    <section class="doctor-card">
+      <div class="card-header">
+        <span class="card-icon">🩺</span>
+        <h2 class="card-title" data-i18n="doctor_card_title">Diagnostics &amp; VPS Security Audit (doctor.sh)</h2>
+      </div>
+      <p class="card-subtitle" style="margin-bottom: 0.25rem;" data-i18n="doctor_card_subtitle"></p>
+
+      <div class="doctor-grid">
+        <div class="doctor-item">
+          <div class="doctor-item-head">
+            <span data-i18n="doctor_audit_title">VPS Security Audit (--audit)</span>
+            <span class="flag-tag">--audit</span>
+          </div>
+          <div class="doctor-cmd-row">
+            <code id="cmd-doctor-audit">curl -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/doctor.sh | sudo bash -s -- --audit</code>
+            <button type="button" class="btn-action" onclick="copyById('cmd-doctor-audit')" data-i18n="btn_copy_short">Copy</button>
+          </div>
+          <div class="field-help" data-i18n="doctor_audit_desc"></div>
+        </div>
+
+        <div class="doctor-item">
+          <div class="doctor-item-head">
+            <span data-i18n="doctor_full_title">Full OpenShip &amp; Host Diagnostics</span>
+            <span class="flag-tag">doctor.sh</span>
+          </div>
+          <div class="doctor-cmd-row">
+            <code id="cmd-doctor-full">curl -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/doctor.sh | sudo bash</code>
+            <button type="button" class="btn-action" onclick="copyById('cmd-doctor-full')" data-i18n="btn_copy_short">Copy</button>
+          </div>
+          <div class="field-help" data-i18n="doctor_full_desc"></div>
+        </div>
+      </div>
+    </section>
 
     <!-- Collapsible Reference -->
     <section class="ref-section">
@@ -1033,7 +1236,29 @@
         chip_stack: 'Stack',
         chip_swap: 'Swap',
         yes: 'Yes',
-        no_docker: 'No (Docker-free)'
+        no_docker: 'No (Docker-free)',
+        specs_title: 'Server Hardware & Auto-Recommendation',
+        specs_subtitle: 'Enter your VPS hardware and role to get the ideal stack, swap, and auto-tuned service limits.',
+        spec_ram_label: 'RAM',
+        spec_cpu_label: 'CPU (vCPU)',
+        spec_disk_label: 'Disk (GB)',
+        spec_storage_label: 'Storage Type',
+        spec_goal_label: 'Server Role',
+        goal_control: 'Control Plane (OpenShip)',
+        goal_worker: 'Worker (Sites / Apps)',
+        goal_aio: 'All-in-One (Panel + Apps)',
+        btn_apply_ideal: '✨ Apply Ideal Settings',
+        rec_prefix: 'Ideal profile:',
+        compat_ok: '✅ Optimal: selected configuration fits comfortably within your server resources.',
+        compat_tight: '⚠️ Tight RAM: this setup is near the memory limit on 1 GB RAM. Keep swap >= 2 GB or disable Host Control/Docker.',
+        compat_oom: '🚨 High OOM Risk: Docker / Standard mode or All-in-One DB stack is too heavy for <= 1 GB RAM. Switch to Bare (no Docker) or Tune-Only.',
+        doctor_card_title: 'Diagnostics & VPS Security Audit (doctor.sh)',
+        doctor_card_subtitle: 'Independent server health & security check commands (run anytime after setup).',
+        doctor_audit_title: 'VPS Security Audit',
+        doctor_audit_desc: 'Checks SSH hardening, UFW/nftables, exposed DB ports, Fail2ban alignment, security updates, UID 0, sudo logging, password policy, SUID, and FrankenPHP.',
+        doctor_full_title: 'Full OpenShip & Host Diagnostics',
+        doctor_full_desc: 'Checks OpenShip Control Plane (:3001/:4000), Caddy/Edge proxy, Docker, plus the complete VPS Security Audit.',
+        btn_copy_short: 'Copy'
       },
       ru: {
         page_title: 'OpenShip Deploy — Мастер сборки команд',
@@ -1137,7 +1362,29 @@
         chip_stack: 'Стек',
         chip_swap: 'Swap',
         yes: 'Да',
-        no_docker: 'Нет (Без Docker)'
+        no_docker: 'Нет (Без Docker)',
+        specs_title: 'Характеристики сервера и автоподбор',
+        specs_subtitle: 'Укажите ресурсы вашего VPS и его роль — мастер подберёт идеальный стек, swap и лимиты сервисов.',
+        spec_ram_label: 'RAM (Память)',
+        spec_cpu_label: 'CPU (vCPU)',
+        spec_disk_label: 'Диск (GB)',
+        spec_storage_label: 'Тип диска',
+        spec_goal_label: 'Роль сервера',
+        goal_control: 'Панель управления (Control Plane)',
+        goal_worker: 'Сервер сайтов / проектов (Worker)',
+        goal_aio: 'Всё на одном сервере (All-in-One)',
+        btn_apply_ideal: '✨ Применить идеальные параметры',
+        rec_prefix: 'Идеальный профиль:',
+        compat_ok: '✅ Оптимально: выбранная конфигурация уверенно помещается в ресурсы вашего сервера.',
+        compat_tight: '⚠️ На пределе RAM: на 1 GB RAM сборка работает впритык. Оставьте swap >= 2 GB или отключите Host Control / Docker.',
+        compat_oom: '🚨 Риск OOM: Standard Docker или связка панель + Docker + БД слишком тяжелы для <= 1 GB RAM. Выберите Bare (без Docker) или Tune-Only.',
+        doctor_card_title: 'Диагностика и аудит безопасности VPS (doctor.sh)',
+        doctor_card_subtitle: 'Отдельные команды проверки сервера и поиска уязвимостей (запускаются в любой момент после установки).',
+        doctor_audit_title: 'Аудит безопасности VPS',
+        doctor_audit_desc: 'Проверяет SSH, UFW/nftables, открытые порты БД, Fail2ban, обновления безопасности, UID 0, sudo-логирование, политику паролей, SUID и FrankenPHP.',
+        doctor_full_title: 'Полная диагностика OpenShip + Аудит',
+        doctor_full_desc: 'Проверяет панель OpenShip (:3001/:4000), Caddy/Edge, Docker и запускает полный аудит безопасности VPS.',
+        btn_copy_short: 'Копировать'
       },
       ua: {
         page_title: 'OpenShip Deploy — Майстер збірки команд',
@@ -1241,7 +1488,29 @@
         chip_stack: 'Стек',
         chip_swap: 'Swap',
         yes: 'Так',
-        no_docker: 'Ні (Без Docker)'
+        no_docker: 'Ні (Без Docker)',
+        specs_title: 'Характеристики сервера та автопідбір',
+        specs_subtitle: 'Вкажіть ресурси вашого VPS і його роль — майстер підбере ідеальний стек, swap та ліміти сервісів.',
+        spec_ram_label: 'RAM (Пам\'ять)',
+        spec_cpu_label: 'CPU (vCPU)',
+        spec_disk_label: 'Диск (GB)',
+        spec_storage_label: 'Тип диска',
+        spec_goal_label: 'Роль сервера',
+        goal_control: 'Панель керування (Control Plane)',
+        goal_worker: 'Сервер сайтів / проєктів (Worker)',
+        goal_aio: 'Усе на одному сервері (All-in-One)',
+        btn_apply_ideal: '✨ Застосувати ідеальні параметри',
+        rec_prefix: 'Ідеальний профіль:',
+        compat_ok: '✅ Оптимально: обрана конфігурація впевнено вміщується у ресурси вашого сервера.',
+        compat_tight: '⚠️ На межі RAM: на 1 GB RAM збірка працює впритул. Залиште swap >= 2 GB або вимкніть Host Control / Docker.',
+        compat_oom: '🚨 Ризик OOM: Standard Docker або зв\'язка панель + Docker + БД заважкі для <= 1 GB RAM. Оберіть Bare (без Docker) або Tune-Only.',
+        doctor_card_title: 'Діагностика та аудит безпеки VPS (doctor.sh)',
+        doctor_card_subtitle: 'Окремі команди перевірки сервера та пошуку вразливостей (запускаються будь-коли після встановлення).',
+        doctor_audit_title: 'Аудит безпеки VPS',
+        doctor_audit_desc: 'Перевіряє SSH, UFW/nftables, відкриті порти БД, Fail2ban, оновлення безпеки, UID 0, sudo-логування, політику паролів, SUID та FrankenPHP.',
+        doctor_full_title: 'Повна діагностика OpenShip + Аудит',
+        doctor_full_desc: 'Перевіряє панель OpenShip (:3001/:4000), Caddy/Edge, Docker та запускає повний аудит безпеки VPS.',
+        btn_copy_short: 'Копіювати'
       }
     };
 
@@ -1296,6 +1565,93 @@
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+    }
+
+    function evaluateServerProfile() {
+      const ram = parseFloat(document.getElementById('spec_ram').value || '1');
+      const cpu = parseInt(document.getElementById('spec_cpu').value || '1', 10);
+      const disk = parseInt(document.getElementById('spec_disk').value || '20', 10);
+      const storage = document.getElementById('spec_storage').value || 'nvme';
+      const goal = document.getElementById('spec_goal').value || 'control';
+
+      const swap = (disk < 15) ? '1' : (ram < 2 ? '2' : (ram <= 4 ? '4' : '2'));
+      const nodeHeap = (ram <= 1) ? 384 : (ram <= 2 ? 512 : 1024);
+      const mariaPool = (ram <= 1) ? '64M' : (ram <= 2 ? '128M' : (ram <= 4 ? '512M' : (ram <= 8 ? '1G' : '2G')));
+      const redisMem = (ram <= 1) ? '48mb' : (ram <= 2 ? '128mb' : '256mb');
+      const ioCap = (storage === 'nvme') ? 2000 : (storage === 'ssd' ? 1000 : 200);
+
+      let mode = 'bare';
+      let proxy = 'caddy';
+      let hostControl = false;
+      let stack = 'none';
+
+      if (goal === 'worker') {
+        mode = 'tune-only';
+        stack = (ram >= 4 && cpu >= 2) ? 'docker' : 'frankenphp';
+      } else if (goal === 'all-in-one') {
+        mode = (ram >= 4) ? 'standard' : 'bare';
+        proxy = 'caddy';
+        hostControl = true;
+        stack = (ram >= 2) ? 'frankenphp' : 'none';
+      } else {
+        mode = (ram >= 4 && cpu >= 2) ? 'standard' : 'bare';
+        proxy = 'caddy';
+        hostControl = (ram >= 2);
+        stack = 'none';
+      }
+
+      return { ram, cpu, disk, storage, goal, swap, nodeHeap, mariaPool, redisMem, ioCap, mode, proxy, hostControl, stack };
+    }
+
+    function renderRecommendationBox() {
+      const p = evaluateServerProfile();
+      document.getElementById('rec-summary-text').innerHTML =
+        `<strong>${escapeHtml(t('rec_prefix'))}</strong> <code>--mode=${escapeHtml(p.mode)}</code>` +
+        (p.mode !== 'tune-only' ? ` · <code>--proxy-mode=${escapeHtml(p.proxy)}</code>` : '') +
+        (!p.hostControl && p.mode !== 'tune-only' ? ` · <code>--no-host-control</code>` : '') +
+        (p.stack !== 'none' ? ` · <code>--stack=${escapeHtml(p.stack)}</code>` : '') +
+        ` · <code>--swap-size=${escapeHtml(p.swap)}</code>`;
+      document.getElementById('rec-tuning-meta').textContent =
+        `Auto-tune: Node=${p.nodeHeap}MB | MariaDB pool=${p.mariaPool}, io_capacity=${p.ioCap} (${p.storage.toUpperCase()}) | Redis=${p.redisMem}`;
+    }
+
+    function updateCompatibilityBanner(mode, hostControl, proxyMode, stackPreset, withDocker, withMariadb) {
+      const ram = parseFloat(document.getElementById('spec_ram').value || '1');
+      const banner = document.getElementById('compat-banner');
+      const usesDocker = (mode === 'standard') || (mode !== 'tune-only' && (hostControl || proxyMode === 'edge')) || (stackPreset === 'docker') || (stackPreset === 'custom' && withDocker);
+      const usesHeavyStack = (stackPreset === 'frankenphp') || (stackPreset === 'custom' && withMariadb);
+
+      let level = 'ok';
+      let msg = t('compat_ok');
+      if (ram <= 1 && ((mode === 'standard') || (mode !== 'tune-only' && usesDocker && usesHeavyStack))) {
+        level = 'danger';
+        msg = t('compat_oom');
+      } else if (ram <= 1 && (usesDocker || (mode !== 'tune-only' && usesHeavyStack))) {
+        level = '';
+        msg = t('compat_tight');
+      }
+      banner.className = 'alert-box' + (level ? ' ' + level : '');
+      banner.textContent = msg;
+    }
+
+    function onSpecsChanged() {
+      renderRecommendationBox();
+      updateOutput();
+    }
+
+    function applyRecommendedProfile() {
+      const p = evaluateServerProfile();
+      const radio = document.querySelector(`input[name="install_mode"][value="${p.mode}"]`);
+      if (radio) {
+        radio.checked = true;
+        updateMode(p.mode);
+      }
+      document.getElementById('host_control').checked = p.hostControl;
+      document.getElementById('proxy_mode').value = p.proxy;
+      document.getElementById('stack_preset').value = p.stack;
+      document.getElementById('swap_size').value = p.swap;
+      updateStackPreset();
+      updateProxyMode();
     }
 
     function getMode() {
@@ -1559,8 +1915,6 @@
           flags.map(formatFlagHtml).join(' \\\n  ');
       } else if (activeTab === 'interactive') {
         cmd = `<span class="cmd-prefix">curl</span> -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/install.sh <span class="cmd-pipe">|</span> <span class="cmd-prefix">sudo bash</span>`;
-      } else if (activeTab === 'audit') {
-        cmd = `<span class="cmd-prefix">curl</span> -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/doctor.sh <span class="cmd-pipe">|</span> <span class="cmd-prefix">sudo bash</span> -s -- <span class="cmd-flag">--audit</span>`;
       } else if (activeTab === 'git') {
         cmd = `<span class="cmd-prefix">git clone</span> https://github.com/HomaEEE/OpenShip-deploy.git <span class="cmd-pipe">&amp;&amp;</span> <span class="cmd-prefix">cd</span> OpenShip-deploy <span class="cmd-pipe">&amp;&amp;</span> <span class="cmd-prefix">sudo ./install.sh</span> <span class="cmd-flag">--help</span>`;
       } else {
@@ -1575,7 +1929,19 @@
       }
 
       document.getElementById('command-output').innerHTML = cmd;
+      renderRecommendationBox();
+      updateCompatibilityBanner(mode, hostControl, proxyMode, stackPreset, withDocker, withMariadb);
       saveFormCache();
+    }
+
+    function copyById(elementId) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      navigator.clipboard.writeText(el.innerText || el.textContent).then(() => {
+        const toast = document.getElementById('toast');
+        toast.style.display = 'block';
+        setTimeout(() => { toast.style.display = 'none'; }, 2200);
+      });
     }
 
     function copyCommand() {
@@ -1599,6 +1965,11 @@
           timestamp: Date.now(),
           currentStep,
           activeTab,
+          specRam: document.getElementById('spec_ram').value,
+          specCpu: document.getElementById('spec_cpu').value,
+          specDisk: document.getElementById('spec_disk').value,
+          specStorage: document.getElementById('spec_storage').value,
+          specGoal: document.getElementById('spec_goal').value,
           mode: getMode(),
           hostControl: document.getElementById('host_control').checked,
           stackPreset: document.getElementById('stack_preset').value,
@@ -1643,6 +2014,11 @@
           localStorage.removeItem(CACHE_KEY);
           return;
         }
+        if (data.specRam !== undefined) document.getElementById('spec_ram').value = data.specRam;
+        if (data.specCpu !== undefined) document.getElementById('spec_cpu').value = data.specCpu;
+        if (data.specDisk !== undefined) document.getElementById('spec_disk').value = data.specDisk;
+        if (data.specStorage !== undefined) document.getElementById('spec_storage').value = data.specStorage;
+        if (data.specGoal !== undefined) document.getElementById('spec_goal').value = data.specGoal;
         if (data.mode) {
           const r = document.querySelector(`input[name="install_mode"][value="${data.mode}"]`);
           if (r) { r.checked = true; updateMode(data.mode); }
@@ -1675,7 +2051,7 @@
         if (typeof data.nonInteractive === 'boolean') document.getElementById('flag_non_interactive').checked = data.nonInteractive;
         if (typeof data.dryRun === 'boolean') document.getElementById('flag_dry_run').checked = data.dryRun;
         if (data.activeTab) {
-          activeTab = data.activeTab;
+          activeTab = (data.activeTab === 'audit') ? 'curl' : data.activeTab;
           document.querySelectorAll('.term-tab').forEach(b => b.classList.remove('active'));
           const tabEl = document.getElementById('tab-' + activeTab);
           if (tabEl) tabEl.classList.add('active');

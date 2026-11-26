@@ -447,7 +447,7 @@ run_vps_security_audit() {
     local suspicious_suid=""
     suspicious_suid="$(find / -xdev -perm -4000 -type f 2>/dev/null | while read -r f; do
         case "$(basename "$f")" in
-            su|sudo|passwd|chsh|chfn|gpasswd|newgrp|mount|umount|fusermount|fusermount3|pkexec|unix_chkpwd|ssh-keysign|dbus-daemon-launch-helper|ntfs-3g|ping|ping6|pppd|ksu) ;;
+            su|sudo|passwd|chsh|chfn|gpasswd|newgrp|mount|umount|fusermount|fusermount3|pkexec|unix_chkpwd|ssh-keysign|dbus-daemon-launch-helper|ntfs-3g|ping|ping6|pppd|ksu|polkit-agent-helper-1) ;;
             *) echo "$f" ;;
         esac
     done || true)"
