@@ -241,7 +241,7 @@
     .dot-green { background: #10b981; }
     .terminal-title { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); font-family: var(--font-mono); }
 
-    .terminal-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.4rem; width: 100%; }
+    .terminal-tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.4rem; width: 100%; }
     @media (max-width: 780px) { .terminal-tabs { grid-template-columns: repeat(3, 1fr); } }
     @media (max-width: 480px) { .terminal-tabs { grid-template-columns: repeat(2, 1fr); } }
     .term-tab {
@@ -503,6 +503,7 @@
           <button type="button" class="term-tab" id="tab-compose" onclick="switchTab('compose')">docker compose</button>
           <button type="button" class="term-tab" id="tab-update" onclick="switchTab('update')">update (--pull)</button>
           <button type="button" class="term-tab" id="tab-backup" onclick="switchTab('backup')">backup / SQL</button>
+          <button type="button" class="term-tab" id="tab-laravel" onclick="switchTab('laravel')">Laravel openship.json</button>
         </div>
       </div>
 
@@ -750,6 +751,36 @@
         out = `docker compose -f services/mariadb-redis/docker-compose.yml --env-file services/mariadb-redis/.env up -d${target}`;
       } else if (activeTab === 'update') {
         out = `# Pull updated MariaDB, Redis & FrankenPHP images + refresh phpMyAdmin\nsudo ./services/mariadb-redis/deploy.sh --pull`;
+      } else if (activeTab === 'laravel') {
+        const redisPass = document.getElementById('redis_pass').value.trim();
+        const rootPass = document.getElementById('maria_pass').value.trim();
+        const laravelCfg = {
+          "$schema": "https://openship.io/openship.schema.json",
+          "framework": "laravel",
+          "env": {
+            "DB_CONNECTION": "mysql",
+            "DB_HOST": "mariadb",
+            "DB_PORT": "3306",
+            "DB_DATABASE": "my_app_db",
+            "DB_USERNAME": "my_app_user",
+            "DB_PASSWORD": { "value": "", "secret": true },
+            "DB_ROOT_PASSWORD": { "value": rootPass, "secret": true },
+            "REDIS_CLIENT": "phpredis",
+            "REDIS_HOST": "redis",
+            "REDIS_PORT": "6379",
+            "REDIS_PASSWORD": { "value": redisPass, "secret": true },
+            "REDIS_PREFIX": "my_app_",
+            "CACHE_STORE": "redis",
+            "SESSION_DRIVER": "redis",
+            "QUEUE_CONNECTION": "redis"
+          },
+          "releaseCommands": [
+            "php -r '$r=getenv(\"DB_ROOT_PASSWORD\");$d=getenv(\"DB_DATABASE\");$u=getenv(\"DB_USERNAME\");$p=getenv(\"DB_PASSWORD\");$h=getenv(\"DB_HOST\")?:\"mariadb\";$port=getenv(\"DB_PORT\")?:\"3306\";if(!$r||!$d||!$u||!$p){fwrite(STDERR,\"Skip DB auto-provision: missing DB_ROOT_PASSWORD or DB_* env\\n\");exit(0);}if(!preg_match(\"/^[A-Za-z0-9_]+$/\",$d)||!preg_match(\"/^[A-Za-z0-9_]+$/\",$u)){fwrite(STDERR,\"Invalid DB_DATABASE or DB_USERNAME\\n\");exit(1);}$pdo=new PDO(\"mysql:host=$h;port=$port;charset=utf8mb4\",\"root\",$r,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$pdo->exec(\"CREATE DATABASE IF NOT EXISTS `$d` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\");$s=$pdo->prepare(\"CREATE USER IF NOT EXISTS ?@\\\"%\\\" IDENTIFIED BY ?\");$s->execute([$u,$p]);$s=$pdo->prepare(\"ALTER USER ?@\\\"%\\\" IDENTIFIED BY ?\");$s->execute([$u,$p]);$pdo->exec(\"GRANT ALL PRIVILEGES ON `$d`.* TO \\\"$u\\\"@\\\"%\\\"\");$pdo->exec(\"FLUSH PRIVILEGES\");echo \"DB & user ready: $d ($u)\\n\";'",
+            "php artisan migrate --force",
+            "php artisan optimize"
+          ]
+        };
+        out = JSON.stringify(laravelCfg, null, 2);
       } else {
         out = `# Backup all MariaDB databases + Redis RDB\nsudo ./services/mariadb-redis/backup.sh\n\n# Create a project DB & user\ndocker exec mariadb mariadb -u root -p"${document.getElementById('maria_pass').value.trim()}" -e "\nCREATE DATABASE IF NOT EXISTS app_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\nCREATE USER IF NOT EXISTS 'app_user'@'%' IDENTIFIED BY 'strong_pass';\nGRANT ALL PRIVILEGES ON app_db.* TO 'app_user'@'%';\nFLUSH PRIVILEGES;"`;
       }

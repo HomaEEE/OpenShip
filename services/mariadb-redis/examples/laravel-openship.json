@@ -1,0 +1,35 @@
+{
+  "$schema": "https://openship.io/openship.schema.json",
+  "framework": "laravel",
+  "env": {
+    "DB_CONNECTION": "mysql",
+    "DB_HOST": "mariadb",
+    "DB_PORT": "3306",
+    "DB_DATABASE": "my_app_db",
+    "DB_USERNAME": "my_app_user",
+    "DB_PASSWORD": {
+      "value": "",
+      "secret": true
+    },
+    "DB_ROOT_PASSWORD": {
+      "value": "",
+      "secret": true
+    },
+    "REDIS_CLIENT": "phpredis",
+    "REDIS_HOST": "redis",
+    "REDIS_PORT": "6379",
+    "REDIS_PASSWORD": {
+      "value": "",
+      "secret": true
+    },
+    "REDIS_PREFIX": "my_app_",
+    "CACHE_STORE": "redis",
+    "SESSION_DRIVER": "redis",
+    "QUEUE_CONNECTION": "redis"
+  },
+  "releaseCommands": [
+    "php -r '$r=getenv(\"DB_ROOT_PASSWORD\");$d=getenv(\"DB_DATABASE\");$u=getenv(\"DB_USERNAME\");$p=getenv(\"DB_PASSWORD\");$h=getenv(\"DB_HOST\")?:\"mariadb\";$port=getenv(\"DB_PORT\")?:\"3306\";if(!$r||!$d||!$u||!$p){fwrite(STDERR,\"Skip DB auto-provision: missing DB_ROOT_PASSWORD or DB_* env\\n\");exit(0);}if(!preg_match(\"/^[A-Za-z0-9_]+$/\",$d)||!preg_match(\"/^[A-Za-z0-9_]+$/\",$u)){fwrite(STDERR,\"Invalid DB_DATABASE or DB_USERNAME\\n\");exit(1);}$pdo=new PDO(\"mysql:host=$h;port=$port;charset=utf8mb4\",\"root\",$r,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$pdo->exec(\"CREATE DATABASE IF NOT EXISTS `$d` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\");$s=$pdo->prepare(\"CREATE USER IF NOT EXISTS ?@\\\"%\\\" IDENTIFIED BY ?\");$s->execute([$u,$p]);$s=$pdo->prepare(\"ALTER USER ?@\\\"%\\\" IDENTIFIED BY ?\");$s->execute([$u,$p]);$pdo->exec(\"GRANT ALL PRIVILEGES ON `$d`.* TO \\\"$u\\\"@\\\"%\\\"\");$pdo->exec(\"FLUSH PRIVILEGES\");echo \"DB & user ready: $d ($u)\\n\";'",
+    "php artisan migrate --force",
+    "php artisan optimize"
+  ]
+}

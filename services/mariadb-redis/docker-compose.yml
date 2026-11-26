@@ -22,8 +22,12 @@ services:
       - sh
       - -c
       - |
-        if [ -z "$${MARIADB_ROOT_PASSWORD}" ] && [ -n "$${DB_ROOT_PASSWORD}" ]; then
-          export MARIADB_ROOT_PASSWORD="$${DB_ROOT_PASSWORD}"
+        if [ -z "$${MARIADB_ROOT_PASSWORD}" ]; then
+          if [ -n "$${ROOT_DB_PASSWORD}" ]; then
+            export MARIADB_ROOT_PASSWORD="$${ROOT_DB_PASSWORD}"
+          elif [ -n "$${DB_ROOT_PASSWORD}" ]; then
+            export MARIADB_ROOT_PASSWORD="$${DB_ROOT_PASSWORD}"
+          fi
         fi
         if [ -z "$${MARIADB_ROOT_PASSWORD}" ]; then
           export MARIADB_RANDOM_ROOT_PASSWORD=1
@@ -31,6 +35,8 @@ services:
         exec docker-entrypoint.sh "$$@"
       - --
     environment:
+      ROOT_DB_PASSWORD: ${ROOT_DB_PASSWORD:-}
+      ROOT_DB_PASSWORD: ${ROOT_DB_PASSWORD:-}
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-}
       DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-}
       MARIADB_AUTO_UPGRADE: "1"
@@ -85,6 +91,7 @@ services:
       PMA_VERSION: ${PHPMYADMIN_VERSION:-latest}
       UPLOAD_LIMIT: ${PHPMYADMIN_UPLOAD_LIMIT:-512M}
       MEMORY_LIMIT: ${PHPMYADMIN_MEMORY_LIMIT:-128M}
+      ROOT_DB_PASSWORD: ${ROOT_DB_PASSWORD:-}
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-}
       PMA_ABSOLUTE_URI: ${PHPMYADMIN_DOMAIN:+https://${PHPMYADMIN_DOMAIN}/}
     ports:
@@ -118,7 +125,7 @@ services:
         fi
         cat > /app/public/config.inc.php <<'EOF'
         <?php
-        $$cfg['blowfish_secret'] = substr(hash('sha256', getenv('MARIADB_ROOT_PASSWORD') ?: 'openship_pma_secret'), 0, 32);
+        $$cfg['blowfish_secret'] = substr(hash('sha256', getenv('ROOT_DB_PASSWORD') ?: getenv('MARIADB_ROOT_PASSWORD') ?: 'openship_pma_secret'), 0, 32);
         $$i = 0;
         $$i++;
         $$cfg['Servers'][$$i]['auth_type'] = 'cookie';

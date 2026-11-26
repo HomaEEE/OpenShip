@@ -1,0 +1,269 @@
+{
+  "$schema": "https://openship.io/app.schema.json",
+  "available": true,
+  "verified": false,
+  "minEngine": "0.9.2",
+  "id": "mariadb-redis-pma",
+  "name": "MariaDB + Redis + phpMyAdmin",
+  "description": "Shared production database stack: MariaDB 11.4 LTS, Redis 7.4 cache, and FrankenPHP-powered phpMyAdmin.",
+  "kind": "template",
+  "logo": "mariadb",
+  "category": "database",
+  "framework": "docker-compose",
+  "services": [
+    {
+      "name": "mariadb",
+      "restart": "unless-stopped",
+      "image": "mariadb:11.4.13",
+      "environment": {
+        "MARIADB_USER": "openship",
+        "MARIADB_DATABASE": "app",
+        "MARIADB_AUTO_UPGRADE": "1"
+      },
+      "volumes": ["mariadb_data:/var/lib/mysql"],
+      "secretEnv": ["MARIADB_ROOT_PASSWORD", "MARIADB_PASSWORD"],
+      "healthcheck": {
+        "test": ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 12,
+        "startPeriod": "30s"
+      },
+      "resources": {
+        "cpuCores": 0.5,
+        "memoryMb": 512,
+        "diskMb": 4096
+      }
+    },
+    {
+      "name": "redis",
+      "restart": "unless-stopped",
+      "image": "redis:7.4-alpine",
+      "commandArgv": [
+        "sh",
+        "-c",
+        "exec redis-server --requirepass \"$REDIS_PASSWORD\" --maxmemory 64mb --maxmemory-policy allkeys-lru"
+      ],
+      "volumes": ["redis_data:/data"],
+      "secretEnv": ["REDIS_PASSWORD"],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "redis-cli --no-auth-warning -a \"$REDIS_PASSWORD\" ping | grep -q PONG"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 5,
+        "startPeriod": "10s"
+      },
+      "resources": {
+        "cpuCores": 0.25,
+        "memoryMb": 128,
+        "diskMb": 512
+      }
+    },
+    {
+      "name": "phpmyadmin",
+      "restart": "unless-stopped",
+      "image": "dunglas/frankenphp:1-php8.4-bookworm",
+      "exposedPort": 80,
+      "exposed": true,
+      "routes": [
+        {
+          "port": 80
+        }
+      ],
+      "dependsOn": ["mariadb"],
+      "environment": {
+        "PMA_HOST": "mariadb",
+        "PMA_PORT": "3306",
+        "PMA_VERSION": "latest",
+        "UPLOAD_LIMIT": "512M",
+        "MEMORY_LIMIT": "128M",
+        "BLOWFISH_SECRET": "{{config:PMA_BLOWFISH_SECRET}}"
+      },
+      "secretEnv": ["BLOWFISH_SECRET"],
+      "volumes": ["pma_data:/app/public"],
+      "commandArgv": [
+        "sh",
+        "-c",
+        "set -e; if ! php -m | grep -qi '^mysqli$'; then install-php-extensions mysqli; fi; if [ ! -f /app/public/.pma-version ]; then mkdir -p /app/public && curl -fsSL https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.tar.gz -o /tmp/pma.tar.gz && find /app/public -mindepth 1 -delete && tar -xzf /tmp/pma.tar.gz -C /app/public --strip-components=1 && rm -f /tmp/pma.tar.gz && printf '%s' latest > /app/public/.pma-version; fi; cp /etc/pma/config.inc.php /app/public/config.inc.php; exec frankenphp php-server --listen :80 --root /app/public"
+      ],
+      "healthcheck": {
+        "test": ["CMD-SHELL", "curl -fsS http://127.0.0.1:80/ >/dev/null || exit 1"],
+        "interval": "15s",
+        "timeout": "5s",
+        "retries": 8,
+        "startPeriod": "60s"
+      },
+      "resources": {
+        "cpuCores": 0.5,
+        "memoryMb": 192,
+        "diskMb": 1024
+      }
+    }
+  ],
+  "configFields": [
+    {
+      "service": "mariadb",
+      "key": "MARIADB_ROOT_PASSWORD",
+      "label": "Database root password",
+      "generate": "secret",
+      "secret": true
+    },
+    {
+      "service": "mariadb",
+      "key": "MARIADB_PASSWORD",
+      "label": "Application database password",
+      "generate": "secret",
+      "secret": true
+    },
+    {
+      "service": "redis",
+      "key": "REDIS_PASSWORD",
+      "label": "Redis password",
+      "generate": "secret",
+      "secret": true
+    },
+    {
+      "service": "phpmyadmin",
+      "key": "PMA_BLOWFISH_SECRET",
+      "label": "phpMyAdmin blowfish secret",
+      "generate": "secret",
+      "secret": true
+    }
+  ],
+  "management": {
+    "kind": "schema"
+  },
+  "connection": {
+    "title": "Connect to MariaDB + Redis + phpMyAdmin",
+    "outputs": [
+      {
+        "id": "admin",
+        "label": "phpMyAdmin",
+        "source": "publicUrl:phpmyadmin",
+        "kind": "url"
+      },
+      {
+        "id": "username",
+        "label": "Database user",
+        "source": "env:mariadb:MARIADB_USER",
+        "width": "half"
+      },
+      {
+        "id": "password",
+        "label": "Database password",
+        "source": "env:mariadb:MARIADB_PASSWORD",
+        "secret": true,
+        "width": "half"
+      },
+      {
+        "id": "url",
+        "label": "Database URL",
+        "source": "template:mysql://openship:{{env:mariadb:MARIADB_PASSWORD}}@mariadb:3306/app",
+        "service": "mariadb",
+        "secret": true,
+        "envKey": "DATABASE_URL",
+        "recommended": true
+      },
+      {
+        "id": "rootPassword",
+        "label": "Database root password",
+        "source": "env:mariadb:MARIADB_ROOT_PASSWORD",
+        "service": "mariadb",
+        "envKey": "DB_ROOT_PASSWORD",
+        "secret": true
+      },
+      {
+        "id": "redisHost",
+        "label": "Redis host",
+        "source": "template:redis",
+        "service": "redis",
+        "envKey": "REDIS_HOST",
+        "width": "half"
+      },
+      {
+        "id": "redisPassword",
+        "label": "Redis password",
+        "source": "env:redis:REDIS_PASSWORD",
+        "secret": true,
+        "envKey": "REDIS_PASSWORD",
+        "width": "half"
+      },
+      {
+        "id": "redisUrl",
+        "label": "Redis URL",
+        "source": "template:redis://:{{env:redis:REDIS_PASSWORD}}@redis:6379",
+        "service": "redis",
+        "secret": true,
+        "envKey": "REDIS_URL",
+        "recommended": true
+      }
+    ],
+    "guide": {
+      "defaultMode": "internal",
+      "useHint": "Link this app to any project in OpenShip, or read DATABASE_URL and REDIS_URL from your app environment."
+    },
+    "firstLogin": {
+      "note": "Generated credentials initialize an empty installation. Account changes made in the app are preserved on redeployment."
+    }
+  },
+  "endpoints": [
+    {
+      "service": "phpmyadmin",
+      "port": 80,
+      "label": "phpMyAdmin",
+      "kind": "http",
+      "defaultMode": "domain",
+      "allowedModes": ["domain", "publish", "internal"]
+    },
+    {
+      "service": "mariadb",
+      "port": 3306,
+      "label": "MariaDB",
+      "kind": "tcp",
+      "scope": "internal",
+      "defaultMode": "internal",
+      "allowedModes": ["internal"]
+    },
+    {
+      "service": "redis",
+      "port": 6379,
+      "label": "Redis",
+      "kind": "tcp",
+      "scope": "internal",
+      "defaultMode": "internal",
+      "allowedModes": ["internal"]
+    }
+  ],
+  "provides": [
+    {
+      "id": "mysql",
+      "category": "database",
+      "outputRefs": ["url", "rootPassword"]
+    },
+    {
+      "id": "redis",
+      "category": "database",
+      "outputRefs": ["redisUrl", "redisHost", "redisPassword"]
+    }
+  ],
+  "minResources": {
+    "cpuCores": 1.0,
+    "memoryMb": 768
+  },
+  "files": [
+    {
+      "service": "phpmyadmin",
+      "path": "/etc/pma/config.inc.php",
+      "content": "<?php\n$cfg['blowfish_secret'] = substr(hash('sha256', getenv('BLOWFISH_SECRET') ?: 'openship_pma_secret'), 0, 32);\n$i = 0;\n$i++;\n$cfg['Servers'][$i]['auth_type'] = 'cookie';\n$cfg['Servers'][$i]['host'] = getenv('PMA_HOST') ?: 'mariadb';\n$cfg['Servers'][$i]['port'] = (int)(getenv('PMA_PORT') ?: 3306);\n$cfg['Servers'][$i]['compress'] = false;\n$cfg['Servers'][$i]['AllowNoPassword'] = false;\n$cfg['TempDir'] = '/tmp';\n"
+    },
+    {
+      "service": "phpmyadmin",
+      "path": "/usr/local/etc/php/conf.d/pma.ini",
+      "content": "upload_max_filesize = 512M\npost_max_size = 512M\nmemory_limit = 128M\n"
+    }
+  ],
+  "tags": ["mariadb", "mysql", "redis", "phpmyadmin", "frankenphp", "database", "cache"]
+}

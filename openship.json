@@ -1,41 +1,20 @@
 {
   "$schema": "https://openship.io/openship.schema.json",
+  "display": {
+    "name": "MariaDB + Redis + phpMyAdmin"
+  },
   "framework": "docker-compose",
-  "domains" : [],
+  "domains": [],
   "composePath": "services/mariadb-redis/docker-compose.yml",
   "volumes": ["mariadb_data", "redis_data", "pma_data"],
   "env": {
-    "MARIADB_ROOT_PASSWORD": {
+    "ROOT_DB_PASSWORD": {
       "value": "",
       "secret": true
     },
     "REDIS_PASSWORD": {
       "value": "",
       "secret": true
-    },
-    "MARIADB_VERSION": {
-      "value": "11.4",
-      "secret": false
-    },
-    "REDIS_VERSION": {
-      "value": "7.4-alpine",
-      "secret": false
-    },
-    "PHP_VERSION": {
-      "value": "8.4",
-      "secret": false
-    },
-    "ENABLE_PHPMYADMIN": {
-      "value": "true",
-      "secret": false
-    },
-    "PHPMYADMIN_VERSION": {
-      "value": "latest",
-      "secret": false
-    },
-    "PHPMYADMIN_DOMAIN": {
-      "value": "",
-      "secret": false
     }
   }
 }
