@@ -1427,7 +1427,7 @@ configure_ufw() {
 
     # Web ports (:80/:443) — only when Edge or Caddy is enabled.
     # In Private mode (no proxy), only SSH is exposed.
-    if [[ "${OPENSHIP_EDGE_ENABLED:-false}" == "true" || "${OPENSHIP_PROXY_MODE:-none}" == "caddy" ]]; then
+    if [[ "${OPENSHIP_EDGE_ENABLED:-false}" == "true" || "${OPENSHIP_PROXY_MODE:-none}" == "caddy" || "${INSTALL_MODE:-}" == "tune-only" ]]; then
         ufw allow 80/tcp \
             comment "Web HTTP (ACME + proxy)"
 

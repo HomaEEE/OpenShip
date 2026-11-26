@@ -118,15 +118,18 @@ services:
         fi
         cat > /app/public/config.inc.php <<'EOF'
         <?php
-        $cfg['blowfish_secret'] = hash('sha256', getenv('MARIADB_ROOT_PASSWORD') ?: 'openship_pma_secret');
-        $i = 0;
-        $i++;
-        $cfg['Servers'][$i]['auth_type'] = 'cookie';
-        $cfg['Servers'][$i]['host'] = getenv('PMA_HOST') ?: 'mariadb';
-        $cfg['Servers'][$i]['port'] = (int)(getenv('PMA_PORT') ?: 3306);
-        $cfg['Servers'][$i]['compress'] = false;
-        $cfg['Servers'][$i]['AllowNoPassword'] = false;
-        $cfg['TempDir'] = '/tmp';
+        $$cfg['blowfish_secret'] = substr(hash('sha256', getenv('MARIADB_ROOT_PASSWORD') ?: 'openship_pma_secret'), 0, 32);
+        $$i = 0;
+        $$i++;
+        $$cfg['Servers'][$$i]['auth_type'] = 'cookie';
+        $$cfg['Servers'][$$i]['host'] = getenv('PMA_HOST') ?: 'mariadb';
+        $$cfg['Servers'][$$i]['port'] = (int)(getenv('PMA_PORT') ?: 3306);
+        $$cfg['Servers'][$$i]['compress'] = false;
+        $$cfg['Servers'][$$i]['AllowNoPassword'] = false;
+        $$cfg['TempDir'] = '/tmp';
+        if (getenv('PMA_ABSOLUTE_URI')) {
+            $$cfg['PmaAbsoluteUri'] = getenv('PMA_ABSOLUTE_URI');
+        }
         EOF
         {
           echo "upload_max_filesize = $${UPLOAD_LIMIT}"
