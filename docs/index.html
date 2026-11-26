@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OpenShip Deploy — Мастер сборки команд</title>
-  <meta name="description" content="Интерактивный мастер настройки и генератор команд для OpenShip Control Plane, FrankenPHP/Caddy стеков и VPS Security Audit на Ubuntu 24.04 LTS.">
+  <title>OpenShip Deploy — Command Wizard</title>
+  <meta name="description" content="Interactive setup wizard & command generator for OpenShip Control Plane, FrankenPHP/Caddy stacks, and VPS Security Audit on Ubuntu 24.04 LTS.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -52,8 +52,16 @@
 
     .container { max-width: 1180px; margin: 0 auto; }
 
-    /* Hero */
+    /* Header & Language Switcher */
     header { text-align: center; margin-bottom: 2rem; }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.1rem;
+    }
     .badge-bar {
       display: inline-flex;
       align-items: center;
@@ -67,8 +75,32 @@
       color: var(--accent-cyan);
       letter-spacing: 0.04em;
       text-transform: uppercase;
-      margin-bottom: 1rem;
     }
+    .lang-switcher {
+      display: inline-flex;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-full);
+      padding: 0.2rem;
+      gap: 0.2rem;
+    }
+    .lang-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.74rem;
+      font-weight: 700;
+      padding: 0.28rem 0.7rem;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .lang-btn:hover { color: var(--text-main); }
+    .lang-btn.active {
+      background: rgba(56, 189, 248, 0.2);
+      color: var(--accent-cyan);
+    }
+
     h1 {
       font-size: clamp(1.75rem, 3.2vw, 2.45rem);
       font-weight: 700;
@@ -79,75 +111,11 @@
       -webkit-text-fill-color: transparent;
     }
     .hero-desc {
-      max-width: 760px;
+      max-width: 780px;
       margin: 0 auto;
       color: var(--text-muted);
       font-size: 0.96rem;
     }
-
-    /* Quick Strip */
-    .guide-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0.85rem;
-      margin-bottom: 1.75rem;
-    }
-    @media (max-width: 900px) { .guide-grid { grid-template-columns: 1fr; } }
-    .guide-item {
-      background: var(--bg-card);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-md);
-      padding: 0.9rem 1rem;
-      backdrop-filter: blur(10px);
-    }
-    .guide-item-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.82rem;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-    }
-    .guide-item-badge {
-      font-size: 0.68rem;
-      padding: 0.15rem 0.5rem;
-      border-radius: var(--radius-full);
-      background: rgba(56, 189, 248, 0.12);
-      color: var(--accent-cyan);
-      font-weight: 600;
-    }
-    .guide-code-box {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      background: #070b12;
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-sm);
-      padding: 0.45rem 0.6rem;
-      margin-bottom: 0.45rem;
-    }
-    .guide-code {
-      font-family: var(--font-mono);
-      font-size: 0.72rem;
-      color: #cbd5e1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex: 1;
-    }
-    .guide-copy-btn {
-      background: rgba(56, 189, 248, 0.14);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-      color: var(--accent-cyan);
-      border-radius: var(--radius-sm);
-      padding: 0.2rem 0.55rem;
-      font-size: 0.7rem;
-      font-weight: 600;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-    .guide-copy-btn:hover { background: rgba(56, 189, 248, 0.24); }
-    .guide-item-desc { font-size: 0.76rem; color: var(--text-dim); }
 
     /* Presets */
     .section-kicker {
@@ -180,14 +148,13 @@
     .preset-name { font-size: 0.85rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.25rem; }
     .preset-desc { font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; }
 
-    /* Main Grid */
+    /* Main Grid (full-width stacked: Wizard then Command Output) */
     .main-grid {
       display: grid;
-      grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.95fr);
-      gap: 1.4rem;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
       align-items: start;
     }
-    @media (max-width: 960px) { .main-grid { grid-template-columns: 1fr; } }
 
     /* Wizard Stepper */
     .stepper {
@@ -241,12 +208,7 @@
     }
     .step-panel { display: none; }
     .step-panel.active { display: block; }
-    .card-header {
-      display: flex;
-      align-items: center;
-      gap: 0.65rem;
-      margin-bottom: 0.35rem;
-    }
+    .card-header { display: flex; align-items: center; gap: 0.65rem; margin-bottom: 0.35rem; }
     .card-icon { font-size: 1.15rem; }
     .card-title { font-size: 1.05rem; font-weight: 700; }
     .card-subtitle { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.15rem; }
@@ -276,11 +238,7 @@
     .radio-card-title { font-size: 0.86rem; font-weight: 600; margin-bottom: 0.3rem; }
     .radio-card-desc { font-size: 0.75rem; color: var(--text-muted); line-height: 1.4; }
 
-    .two-col {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.85rem;
-    }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
     @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
 
     .form-group { margin-bottom: 1rem; }
@@ -384,13 +342,8 @@
     .nav-btn.primary:hover { filter: brightness(1.08); }
 
     /* Output Column */
-    .output-panel { position: sticky; top: 1.25rem; }
-    .summary-strip {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.45rem;
-      margin-bottom: 0.75rem;
-    }
+    .output-panel { width: 100%; }
+    .summary-strip { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.75rem; }
     .summary-chip {
       font-size: 0.72rem;
       font-weight: 600;
@@ -411,33 +364,38 @@
     }
     .terminal-header {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.65rem 0.9rem;
+      flex-direction: column;
+      gap: 0.6rem;
+      padding: 0.75rem 0.9rem;
       background: #0d1320;
       border-bottom: 1px solid var(--border-subtle);
-      gap: 0.5rem;
-      flex-wrap: wrap;
     }
+    .terminal-top-bar { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+    .terminal-title { font-size: 0.76rem; font-weight: 600; color: var(--text-muted); font-family: var(--font-mono); }
     .terminal-dots { display: flex; gap: 6px; }
     .dot { width: 10px; height: 10px; border-radius: 50%; }
     .dot-red { background: #ef4444; }
     .dot-yellow { background: #f59e0b; }
     .dot-green { background: #10b981; }
-    .terminal-tabs { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+    .terminal-tabs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.4rem; width: 100%; }
+    @media (max-width: 780px) { .terminal-tabs { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 480px) { .terminal-tabs { grid-template-columns: repeat(2, 1fr); } }
     .term-tab {
-      background: transparent;
-      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
       color: var(--text-muted);
-      font-size: 0.72rem;
+      font-size: 0.74rem;
       font-weight: 600;
-      padding: 0.25rem 0.55rem;
+      padding: 0.45rem 0.6rem;
       border-radius: var(--radius-sm);
       cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
     }
+    .term-tab:hover { border-color: var(--border-accent); color: var(--text-main); }
     .term-tab.active {
-      background: rgba(56, 189, 248, 0.14);
-      border-color: rgba(56, 189, 248, 0.35);
+      background: rgba(56, 189, 248, 0.16);
+      border-color: rgba(56, 189, 248, 0.45);
       color: var(--accent-cyan);
     }
     .terminal-body {
@@ -456,11 +414,7 @@
     .cmd-flag { color: #a78bfa; }
     .cmd-val { color: #34d399; }
 
-    .terminal-footer {
-      padding: 0.75rem 0.9rem;
-      background: #0d1320;
-      border-top: 1px solid var(--border-subtle);
-    }
+    .terminal-footer { padding: 0.75rem 0.9rem; background: #0d1320; border-top: 1px solid var(--border-subtle); }
     .copy-btn {
       width: 100%;
       padding: 0.65rem 1rem;
@@ -478,12 +432,7 @@
     }
     .copy-btn:hover { filter: brightness(1.08); }
 
-    .quick-switches {
-      display: flex;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-      margin-top: 0.8rem;
-    }
+    .quick-switches { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.8rem; }
     .pill-checkbox {
       display: inline-flex;
       align-items: center;
@@ -521,12 +470,7 @@
       border-radius: var(--radius-lg);
       padding: 1rem 1.25rem;
     }
-    details.ref-card summary {
-      cursor: pointer;
-      font-weight: 600;
-      font-size: 0.92rem;
-      color: var(--text-main);
-    }
+    details.ref-card summary { cursor: pointer; font-weight: 600; font-size: 0.92rem; color: var(--text-main); }
     .ref-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -573,70 +517,36 @@
 <body>
   <div class="container">
     <header>
-      <div class="badge-bar">Ubuntu 24.04 LTS · Single-Script Provisioning</div>
-      <h1>OpenShip Deploy — Мастер настройки сервера</h1>
-      <p class="hero-desc">
-        Единый инструмент для тюнинга Ubuntu VPS, установки стеков (FrankenPHP/Caddy, MariaDB, Redis, Docker, <code>site-cli</code>), развёртывания панели OpenShip и аудита безопасности (<code>doctor.sh --audit</code>). Настройте шаги слева — готовая команда обновится справа.
-      </p>
+      <div class="header-top">
+        <div class="badge-bar">Ubuntu 24.04 LTS · Single-Script Provisioning</div>
+        <div class="lang-switcher" role="group" aria-label="Language selector">
+          <button type="button" class="lang-btn" id="lang-en" onclick="setLang('en')">EN</button>
+          <button type="button" class="lang-btn" id="lang-ru" onclick="setLang('ru')">RU</button>
+          <button type="button" class="lang-btn" id="lang-ua" onclick="setLang('ua')">UA</button>
+        </div>
+      </div>
+      <h1 data-i18n="hero_title">OpenShip Deploy — Server Setup Wizard</h1>
+      <p class="hero-desc" data-i18n-html="hero_desc"></p>
     </header>
 
-    <!-- Quick Start Strip -->
-    <div class="guide-grid">
-      <div class="guide-item">
-        <div class="guide-item-header">
-          <span>1. Интерактивный мастер</span>
-          <span class="guide-item-badge">install.sh</span>
-        </div>
-        <div class="guide-code-box">
-          <span class="guide-code" id="cmd-quick">curl -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/install.sh | sudo bash</span>
-          <button class="guide-copy-btn" onclick="copySnippet('cmd-quick')">Copy</button>
-        </div>
-        <div class="guide-item-desc">Запуск на сервере с пошаговым выбором: тюнинг ОС, стеки и панель OpenShip.</div>
-      </div>
-
-      <div class="guide-item">
-        <div class="guide-item-header">
-          <span>2. Аудит безопасности VPS</span>
-          <span class="guide-item-badge">doctor.sh --audit</span>
-        </div>
-        <div class="guide-code-box">
-          <span class="guide-code" id="cmd-doctor">curl -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/doctor.sh | sudo bash -s -- --audit</span>
-          <button class="guide-copy-btn" onclick="copySnippet('cmd-doctor')">Copy</button>
-        </div>
-        <div class="guide-item-desc">Проверяет SSH, UFW, открытые порты БД, Fail2ban, обновления, SUID и FrankenPHP.</div>
-      </div>
-
-      <div class="guide-item">
-        <div class="guide-item-header">
-          <span>3. Клонирование репозитория</span>
-          <span class="guide-item-badge">Git</span>
-        </div>
-        <div class="guide-code-box">
-          <span class="guide-code" id="cmd-git">git clone https://github.com/HomaEEE/OpenShip-deploy.git &amp;&amp; cd OpenShip-deploy</span>
-          <button class="guide-copy-btn" onclick="copySnippet('cmd-git')">Copy</button>
-        </div>
-        <div class="guide-item-desc">Локальная проверка скриптов перед запуском (<code>sudo ./install.sh --help</code>).</div>
-      </div>
-    </div>
-
     <!-- Quick Presets -->
-    <div class="section-kicker">⚡ Быстрые пресеты</div>
+    <div class="section-kicker" data-i18n="presets_kicker">⚡ Quick Presets</div>
     <div class="preset-grid">
       <button type="button" class="preset-btn active" onclick="applyPreset('bare-cf-flex', this)">
-        <div class="preset-name">🚀 Control VPS (Bare + Caddy)</div>
-        <div class="preset-desc">Лёгкий Node + embedded DB, Caddy, без Docker (от 1 GB RAM).</div>
+        <div class="preset-name" data-i18n="preset_bare_title">🚀 Control VPS (Bare + Caddy)</div>
+        <div class="preset-desc" data-i18n="preset_bare_desc"></div>
       </button>
       <button type="button" class="preset-btn" onclick="applyPreset('standard-docker', this)">
-        <div class="preset-name">🐳 Control VPS (Docker)</div>
-        <div class="preset-desc">Полный стек OpenShip в Docker Compose (Postgres + Redis, 2+ GB RAM).</div>
+        <div class="preset-name" data-i18n="preset_std_title">🐳 Control VPS (Docker)</div>
+        <div class="preset-desc" data-i18n="preset_std_desc"></div>
       </button>
       <button type="button" class="preset-btn" onclick="applyPreset('worker-frankenphp', this)">
-        <div class="preset-name">⚡ Worker (FrankenPHP)</div>
-        <div class="preset-desc">Тюнинг + FrankenPHP (Caddy/PHP) + MariaDB + Redis + site-cli.</div>
+        <div class="preset-name" data-i18n="preset_fp_title">⚡ Worker (FrankenPHP)</div>
+        <div class="preset-desc" data-i18n="preset_fp_desc"></div>
       </button>
       <button type="button" class="preset-btn" onclick="applyPreset('worker-docker', this)">
-        <div class="preset-name">📦 Worker (Docker Host)</div>
-        <div class="preset-desc">Только тюнинг ОС и Docker Engine + Compose v2 без панели.</div>
+        <div class="preset-name" data-i18n="preset_wd_title">📦 Worker (Docker Host)</div>
+        <div class="preset-desc" data-i18n="preset_wd_desc"></div>
       </button>
     </div>
 
@@ -645,16 +555,16 @@
       <div>
         <div class="stepper">
           <button type="button" class="step-pill active" id="pill-step-1" onclick="goToStep(1)">
-            <span class="step-num">1</span><span>Режим</span>
+            <span class="step-num">1</span><span data-i18n="step1_pill">Mode</span>
           </button>
           <button type="button" class="step-pill" id="pill-step-2" onclick="goToStep(2)">
-            <span class="step-num">2</span><span>Стеки</span>
+            <span class="step-num">2</span><span data-i18n="step2_pill">Stacks</span>
           </button>
           <button type="button" class="step-pill" id="pill-step-3" onclick="goToStep(3)">
-            <span class="step-num">3</span><span>OpenShip</span>
+            <span class="step-num">3</span><span data-i18n="step3_pill">OpenShip</span>
           </button>
           <button type="button" class="step-pill" id="pill-step-4" onclick="goToStep(4)">
-            <span class="step-num">4</span><span>Тюнинг</span>
+            <span class="step-num">4</span><span data-i18n="step4_pill">Tuning</span>
           </button>
         </div>
 
@@ -662,32 +572,32 @@
         <div class="card step-panel active" id="step-1">
           <div class="card-header">
             <span class="card-icon">⚙️</span>
-            <h2 class="card-title">Шаг 1. Режим и роль сервера</h2>
+            <h2 class="card-title" data-i18n="step1_title"></h2>
           </div>
-          <p class="card-subtitle">Выберите, будет ли этот VPS панелью управления OpenShip или worker-сервером для проектов.</p>
+          <p class="card-subtitle" data-i18n="step1_subtitle"></p>
 
           <div class="radio-card-grid">
             <label class="radio-card selected" id="card-mode-bare">
               <input type="radio" name="install_mode" value="bare" checked onchange="updateMode('bare')">
               <div class="radio-card-title">🚀 Bare Mode</div>
-              <div class="radio-card-desc">Нативный Node + встроенная БД. Экономит RAM (подходит для 1 GB VPS).</div>
+              <div class="radio-card-desc" data-i18n="mode_bare_desc"></div>
             </label>
             <label class="radio-card" id="card-mode-standard">
               <input type="radio" name="install_mode" value="standard" onchange="updateMode('standard')">
               <div class="radio-card-title">🐳 Standard Docker</div>
-              <div class="radio-card-desc">Панель в Docker Compose (Postgres + Redis). Рекомендуется от 2+ GB RAM.</div>
+              <div class="radio-card-desc" data-i18n="mode_std_desc"></div>
             </label>
             <label class="radio-card" id="card-mode-tune-only">
               <input type="radio" name="install_mode" value="tune-only" onchange="updateMode('tune-only')">
               <div class="radio-card-title">🛠️ Tune &amp; Stacks</div>
-              <div class="radio-card-desc">Только тюнинг ОС и выбранные стеки (без панели OpenShip).</div>
+              <div class="radio-card-desc" data-i18n="mode_tune_desc"></div>
             </label>
           </div>
 
           <div class="toggle-row" id="row-host-control">
             <div>
-              <span class="toggle-title">Host Control Terminal <span class="flag-tag">--no-host-control</span></span>
-              <span class="toggle-desc">Если выключено, Control VPS изолирован и Docker Engine в Bare+Caddy не устанавливается (экономия ~200 MB RAM).</span>
+              <span class="toggle-title"><span data-i18n="hc_title">Host Control Terminal</span> <span class="flag-tag">--no-host-control</span></span>
+              <span class="toggle-desc" data-i18n="hc_desc"></span>
             </div>
             <label class="switch">
               <input type="checkbox" id="host_control" onchange="updateOutput()">
@@ -696,8 +606,8 @@
           </div>
 
           <div class="wizard-nav">
-            <button type="button" class="nav-btn" disabled>← Назад</button>
-            <button type="button" class="nav-btn primary" onclick="nextStep()">Далее: Стеки →</button>
+            <button type="button" class="nav-btn" disabled data-i18n="btn_back">← Back</button>
+            <button type="button" class="nav-btn primary" onclick="nextStep()" data-i18n="btn_next_stacks">Next: Stacks →</button>
           </div>
         </div>
 
@@ -705,57 +615,57 @@
         <div class="card step-panel" id="step-2">
           <div class="card-header">
             <span class="card-icon">📦</span>
-            <h2 class="card-title">Шаг 2. Программные стеки</h2>
+            <h2 class="card-title" data-i18n="step2_title"></h2>
           </div>
-          <p class="card-subtitle">Опциональная установка веб-сервера, БД и утилит сразу после системного тюнинга.</p>
+          <p class="card-subtitle" data-i18n="step2_subtitle"></p>
 
           <div class="form-group">
             <label class="form-label">
-              <span>Набор стеков</span>
+              <span data-i18n="stack_label">Stack Preset</span>
               <span class="flag-tag">--stack</span>
             </label>
             <select id="stack_preset" class="form-select" onchange="updateStackPreset()">
-              <option value="none" selected>Без дополнительных стеков (только тюнинг / OpenShip)</option>
-              <option value="frankenphp">Full FrankenPHP Stack (FrankenPHP + MariaDB + Redis + site-cli)</option>
-              <option value="docker">Docker Engine &amp; Compose v2</option>
-              <option value="custom">Выборочная установка (--with-*)</option>
+              <option value="none" selected data-i18n="stack_opt_none"></option>
+              <option value="frankenphp" data-i18n="stack_opt_fp"></option>
+              <option value="docker" data-i18n="stack_opt_docker"></option>
+              <option value="custom" data-i18n="stack_opt_custom"></option>
             </select>
-            <div class="field-help">Для worker-сервера под PHP/Laravel/WordPress выбирайте <strong>Full FrankenPHP Stack</strong>, под контейнеры — <strong>Docker</strong>.</div>
+            <div class="field-help" data-i18n-html="stack_help"></div>
           </div>
 
           <div id="custom-stack-panel" style="display: none;">
             <div class="toggle-row">
               <div>
                 <span class="toggle-title">FrankenPHP (Caddy + PHP) <span class="flag-tag">--with-frankenphp</span></span>
-                <span class="toggle-desc">Один бинарник с авто-SSL (Let's Encrypt), HTTP/3 и встроенным PHP без php-fpm.</span>
+                <span class="toggle-desc" data-i18n="fp_desc"></span>
               </div>
               <label class="switch"><input type="checkbox" id="with_frankenphp" onchange="updateOutput()"><span class="slider"></span></label>
             </div>
             <div class="toggle-row">
               <div>
                 <span class="toggle-title">MariaDB Server &amp; Client <span class="flag-tag">--with-mariadb</span></span>
-                <span class="toggle-desc">Локальная БД на 127.0.0.1:3306 (не торчит наружу).</span>
+                <span class="toggle-desc" data-i18n="mariadb_desc"></span>
               </div>
               <label class="switch"><input type="checkbox" id="with_mariadb" onchange="updateOutput()"><span class="slider"></span></label>
             </div>
             <div class="toggle-row">
               <div>
                 <span class="toggle-title">Redis Cache <span class="flag-tag">--with-redis</span></span>
-                <span class="toggle-desc">Кэш и очереди на 127.0.0.1:6379.</span>
+                <span class="toggle-desc" data-i18n="redis_desc"></span>
               </div>
               <label class="switch"><input type="checkbox" id="with_redis" onchange="updateOutput()"><span class="slider"></span></label>
             </div>
             <div class="toggle-row">
               <div>
                 <span class="toggle-title">Docker Engine &amp; Compose v2 <span class="flag-tag">--with-docker</span></span>
-                <span class="toggle-desc">Официальный Docker CE и плагин Compose v2.</span>
+                <span class="toggle-desc" data-i18n="docker_desc"></span>
               </div>
               <label class="switch"><input type="checkbox" id="with_docker" onchange="updateOutput()"><span class="slider"></span></label>
             </div>
             <div class="toggle-row">
               <div>
                 <span class="toggle-title">site-cli <span class="flag-tag">--with-site-cli</span></span>
-                <span class="toggle-desc">Утилита <code>/usr/local/bin/site-cli</code> для создания сайтов в FrankenPHP/Caddy и БД.</span>
+                <span class="toggle-desc" data-i18n-html="sitecli_desc"></span>
               </div>
               <label class="switch"><input type="checkbox" id="with_site_cli" onchange="updateOutput()"><span class="slider"></span></label>
             </div>
@@ -763,19 +673,17 @@
 
           <div class="toggle-row">
             <div>
-              <span class="toggle-title">Удалить Apache2 автоматически <span class="flag-tag">--purge-apache</span></span>
-              <span class="toggle-desc">Останавливает и удаляет предустановленный Apache2, чтобы освободить :80/:443 и RAM.</span>
+              <span class="toggle-title"><span data-i18n="apache_title">Auto-remove Apache2</span> <span class="flag-tag">--purge-apache</span></span>
+              <span class="toggle-desc" data-i18n="apache_desc"></span>
             </div>
             <label class="switch"><input type="checkbox" id="purge_apache" checked onchange="updateOutput()"><span class="slider"></span></label>
           </div>
 
-          <div id="frankenphp-port-warning" class="alert-box" style="display: none;">
-            <strong>⚠️ Порты :80/:443:</strong> OpenShip Proxy (Caddy/Edge) уже занимает <code>:80/:443</code>, поэтому FrankenPHP автоматически поднимется локально на <code>127.0.0.1:8080</code>.
-          </div>
+          <div id="frankenphp-port-warning" class="alert-box" style="display: none;" data-i18n-html="fp_port_warn"></div>
 
           <div class="wizard-nav">
-            <button type="button" class="nav-btn" onclick="prevStep()">← Назад</button>
-            <button type="button" class="nav-btn primary" onclick="nextStep()">Далее →</button>
+            <button type="button" class="nav-btn" onclick="prevStep()" data-i18n="btn_back">← Back</button>
+            <button type="button" class="nav-btn primary" onclick="nextStep()" data-i18n="btn_next">Next →</button>
           </div>
         </div>
 
@@ -783,36 +691,36 @@
         <div class="card step-panel" id="step-3">
           <div class="card-header">
             <span class="card-icon">🌐</span>
-            <h2 class="card-title">Шаг 3. Домен, Proxy и Администратор OpenShip</h2>
+            <h2 class="card-title" data-i18n="step3_title"></h2>
           </div>
-          <p class="card-subtitle">Настройка публичного доступа к панели и учётной записи администратора.</p>
+          <p class="card-subtitle" data-i18n="step3_subtitle"></p>
 
           <div class="form-group">
-            <label class="form-label"><span>Домен панели</span><span class="flag-tag">--domain</span></label>
+            <label class="form-label"><span data-i18n="domain_label">Panel Domain</span><span class="flag-tag">--domain</span></label>
             <input type="text" id="domain" class="form-input" placeholder="os.example.com" value="os.example.com" oninput="updateOutput()">
-            <div class="field-help">DNS A-запись должна указывать на IP этого VPS. Для локального режима оставьте пустым.</div>
+            <div class="field-help" data-i18n="domain_help"></div>
           </div>
 
           <div class="two-col">
             <div class="form-group">
               <label class="form-label"><span>Reverse Proxy</span><span class="flag-tag">--proxy-mode</span></label>
               <select id="proxy_mode" class="form-select" onchange="updateProxyMode()">
-                <option value="caddy" selected>Caddy (нативный, без Docker)</option>
-                <option value="edge">OpenShip Edge (Docker)</option>
-                <option value="none">None (только локальный :3001)</option>
+                <option value="caddy" selected data-i18n="proxy_caddy"></option>
+                <option value="edge" data-i18n="proxy_edge"></option>
+                <option value="none" data-i18n="proxy_none"></option>
               </select>
-              <div class="field-help">Caddy рекомендуется для Bare-режима на малых VPS.</div>
+              <div class="field-help" data-i18n="proxy_help"></div>
             </div>
 
             <div class="form-group" id="group-ssl-mode">
-              <label class="form-label"><span>Режим SSL / TLS</span><span class="flag-tag">--ssl-mode</span></label>
+              <label class="form-label"><span data-i18n="ssl_label">SSL / TLS Mode</span><span class="flag-tag">--ssl-mode</span></label>
               <select id="ssl_mode" class="form-select" onchange="updateSSLMode()">
-                <option value="cloudflare_flexible" selected>Cloudflare Flexible (HTTP :80)</option>
-                <option value="auto">Auto Let's Encrypt (ACME)</option>
-                <option value="cloudflare_origin">Cloudflare Origin CA (.crt/.key)</option>
-                <option value="http_ip">Direct IP (HTTP :80)</option>
+                <option value="cloudflare_flexible" selected data-i18n="ssl_cf_flex"></option>
+                <option value="auto" data-i18n="ssl_auto"></option>
+                <option value="cloudflare_origin" data-i18n="ssl_cf_orig"></option>
+                <option value="http_ip" data-i18n="ssl_http_ip"></option>
               </select>
-              <div class="field-help">Для проксирования через Cloudflare без петель редиректа выбирайте Flexible или Origin CA.</div>
+              <div class="field-help" data-i18n="ssl_help"></div>
             </div>
           </div>
 
@@ -829,27 +737,27 @@
 
           <div class="two-col">
             <div class="form-group">
-              <label class="form-label"><span>Имя админа</span><span class="flag-tag">--admin-name</span></label>
+              <label class="form-label"><span data-i18n="admin_name_label">Admin Name</span><span class="flag-tag">--admin-name</span></label>
               <input type="text" id="admin_name" class="form-input" value="Admin" oninput="updateOutput()">
             </div>
             <div class="form-group">
-              <label class="form-label"><span>Email админа</span><span class="flag-tag">--admin-email</span></label>
+              <label class="form-label"><span data-i18n="admin_email_label">Admin Email</span><span class="flag-tag">--admin-email</span></label>
               <input type="email" id="admin_email" class="form-input" value="admin@example.com" oninput="updateOutput()">
             </div>
           </div>
 
           <div class="form-group">
             <label class="form-label">
-              <span>Пароль админа <span class="flag-tag">--admin-password</span></span>
-              <button type="button" class="btn-action" onclick="generatePassword()">🎲 Сгенерировать</button>
+              <span><span data-i18n="admin_pass_label">Admin Password</span> <span class="flag-tag">--admin-password</span></span>
+              <button type="button" class="btn-action" onclick="generatePassword()" data-i18n="btn_generate">🎲 Generate</button>
             </label>
             <input type="text" id="admin_password" class="form-input" value="Sh!pP@ssw0rd2026" oninput="updateOutput()">
-            <div class="field-help">Минимум 8 символов; передаётся только при первом запуске панели.</div>
+            <div class="field-help" data-i18n="admin_pass_help"></div>
           </div>
 
           <div class="wizard-nav">
-            <button type="button" class="nav-btn" onclick="prevStep()">← Назад</button>
-            <button type="button" class="nav-btn primary" onclick="nextStep()">Далее: Тюнинг →</button>
+            <button type="button" class="nav-btn" onclick="prevStep()" data-i18n="btn_back">← Back</button>
+            <button type="button" class="nav-btn primary" onclick="nextStep()" data-i18n="btn_next_tuning">Next: Tuning →</button>
           </div>
         </div>
 
@@ -857,60 +765,67 @@
         <div class="card step-panel" id="step-4">
           <div class="card-header">
             <span class="card-icon">🛡️</span>
-            <h2 class="card-title">Шаг 4. Тюнинг ОС и безопасность</h2>
+            <h2 class="card-title" data-i18n="step4_title"></h2>
           </div>
-          <p class="card-subtitle">Параметры ядра, swap, SSH, firewall и защиты от перебора паролей.</p>
+          <p class="card-subtitle" data-i18n="step4_subtitle"></p>
 
           <div class="two-col">
             <div class="form-group">
               <label class="form-label"><span>Hostname</span><span class="flag-tag">--hostname</span></label>
               <input type="text" id="hostname" class="form-input" value="openship-control" oninput="updateOutput()">
-              <div class="field-help">Системное имя сервера (<code>hostnamectl</code>).</div>
+              <div class="field-help" data-i18n-html="hostname_help"></div>
             </div>
             <div class="form-group">
               <label class="form-label">
                 <span>Timezone <span class="flag-tag">--timezone</span></span>
-                <button type="button" class="btn-action" onclick="detectTimezone()">📍 Авто</button>
+                <button type="button" class="btn-action" onclick="detectTimezone()" data-i18n="btn_auto">📍 Auto</button>
               </label>
               <input type="text" id="timezone" class="form-input" value="UTC" oninput="updateOutput()">
-              <div class="field-help">Часовой пояс для логов и cron (например, <code>Europe/Kyiv</code>).</div>
-            </div>
-          </div>
-
-          <div class="two-col">
-            <div class="form-group">
-              <label class="form-label"><span>SSH Порт</span><span class="flag-tag">--ssh-port</span></label>
-              <input type="number" id="ssh_port" class="form-input" value="22" oninput="updateOutput()">
-              <div class="field-help">Автоматически открывается в UFW и прописывается в Fail2ban.</div>
-            </div>
-            <div class="form-group">
-              <label class="form-label"><span>Linux Admin User</span><span class="flag-tag">--admin-user</span></label>
-              <input type="text" id="admin_user" class="form-input" value="openship" oninput="updateOutput()">
-              <div class="field-help">Пользователь с sudo-правами для SSH-доступа.</div>
+              <div class="field-help" data-i18n-html="timezone_help"></div>
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label"><span>Публичный SSH-ключ (опционально)</span><span class="flag-tag">--ssh-key</span></label>
+            <label class="form-label"><span data-i18n="ssh_port_label">SSH Port</span><span class="flag-tag">--ssh-port</span></label>
+            <input type="number" id="ssh_port" class="form-input" value="22" oninput="updateOutput()">
+            <div class="field-help" data-i18n="ssh_port_help"></div>
+          </div>
+
+          <div class="toggle-row">
+            <div>
+              <span class="toggle-title"><span data-i18n="admin_user_toggle">Create Linux Admin User</span> <span class="flag-tag">--admin-user</span></span>
+              <span class="toggle-desc" data-i18n-html="admin_user_toggle_desc"></span>
+            </div>
+            <label class="switch"><input type="checkbox" id="enable_admin_user" onchange="updateAdminUserToggle()"><span class="slider"></span></label>
+          </div>
+
+          <div class="form-group" id="group-admin-user" style="display: none;">
+            <label class="form-label"><span data-i18n="admin_user_label">Linux Admin Username</span><span class="flag-tag">--admin-user</span></label>
+            <input type="text" id="admin_user" class="form-input" value="openship" oninput="updateOutput()">
+            <div class="field-help" data-i18n="admin_user_help"></div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label"><span data-i18n="ssh_key_label">SSH Public Key (optional)</span><span class="flag-tag">--ssh-key</span></label>
             <input type="text" id="ssh_key" class="form-input" placeholder="ssh-ed25519 AAAA..." oninput="updateOutput()">
-            <div class="field-help">Если указан, добавляется в <code>authorized_keys</code> и включает вход только по ключу.</div>
+            <div class="field-help" data-i18n-html="ssh_key_help"></div>
           </div>
 
           <div class="form-group">
-            <label class="form-label"><span>Размер Swapfile</span><span class="flag-tag">--swap-size</span></label>
+            <label class="form-label"><span data-i18n="swap_label">Swapfile Size</span><span class="flag-tag">--swap-size</span></label>
             <select id="swap_size" class="form-select" onchange="updateOutput()">
-              <option value="2" selected>2 GB (Гибрид: zRAM 50% + 2 GB /swapfile)</option>
-              <option value="4">4 GB (Для серверов 2+ GB RAM)</option>
-              <option value="1">1 GB (При малом диске)</option>
-              <option value="0">0 GB — отключить дисковый swap (--disable-swap)</option>
+              <option value="2" selected data-i18n="swap_opt_2"></option>
+              <option value="4" data-i18n="swap_opt_4"></option>
+              <option value="1" data-i18n="swap_opt_1"></option>
+              <option value="0" data-i18n="swap_opt_0"></option>
             </select>
-            <div class="field-help">Защищает Node.js/сборки от OOM-kill при нехватке RAM.</div>
+            <div class="field-help" data-i18n="swap_help"></div>
           </div>
 
           <div class="toggle-row">
             <div>
               <span class="toggle-title">UFW Firewall <span class="flag-tag">--disable-ufw</span></span>
-              <span class="toggle-desc">Разрешает только SSH, :80 и :443; закрывает :3001, :4000, :3306, :6379 снаружи.</span>
+              <span class="toggle-desc" data-i18n="ufw_desc"></span>
             </div>
             <label class="switch"><input type="checkbox" id="enable_ufw" checked onchange="updateOutput()"><span class="slider"></span></label>
           </div>
@@ -918,34 +833,39 @@
           <div class="toggle-row">
             <div>
               <span class="toggle-title">Fail2ban SSH Protection <span class="flag-tag">--disable-fail2ban</span></span>
-              <span class="toggle-desc">Автобан IP после серии неудачных попыток входа по SSH.</span>
+              <span class="toggle-desc" data-i18n="f2b_desc"></span>
             </div>
             <label class="switch"><input type="checkbox" id="enable_fail2ban" checked onchange="updateOutput()"><span class="slider"></span></label>
           </div>
 
           <div class="wizard-nav">
-            <button type="button" class="nav-btn" onclick="prevStep()">← Назад</button>
-            <button type="button" class="nav-btn primary" onclick="copyCommand()">📋 Скопировать команду</button>
+            <button type="button" class="nav-btn" onclick="prevStep()" data-i18n="btn_back">← Back</button>
+            <button type="button" class="nav-btn primary" onclick="copyCommand()" data-i18n="btn_copy">📋 Copy Command</button>
           </div>
         </div>
       </div>
 
-      <!-- Output Column -->
+      <!-- Full-Width Command Output Panel (Bottom) -->
       <div class="output-panel">
         <div class="summary-strip" id="summary-strip"></div>
 
         <div class="terminal-card">
           <div class="terminal-header">
-            <div class="terminal-dots">
-              <div class="dot dot-red"></div>
-              <div class="dot dot-yellow"></div>
-              <div class="dot dot-green"></div>
+            <div class="terminal-top-bar">
+              <div class="terminal-dots">
+                <div class="dot dot-red"></div>
+                <div class="dot dot-yellow"></div>
+                <div class="dot dot-green"></div>
+              </div>
+              <span class="terminal-title" data-i18n="term_title">Generated Command</span>
             </div>
             <div class="terminal-tabs">
               <button type="button" class="term-tab active" id="tab-curl" onclick="switchTab('curl')">curl 1-liner</button>
               <button type="button" class="term-tab" id="tab-local" onclick="switchTab('local')">local script</button>
               <button type="button" class="term-tab" id="tab-env" onclick="switchTab('env')">env vars</button>
+              <button type="button" class="term-tab" id="tab-interactive" onclick="switchTab('interactive')">interactive</button>
               <button type="button" class="term-tab" id="tab-audit" onclick="switchTab('audit')">audit</button>
+              <button type="button" class="term-tab" id="tab-git" onclick="switchTab('git')">git clone</button>
             </div>
           </div>
 
@@ -954,7 +874,7 @@
           <div class="terminal-footer">
             <button type="button" class="copy-btn" onclick="copyCommand()">
               <span>📋</span>
-              <span id="copy-text">Скопировать команду</span>
+              <span id="copy-text" data-i18n="btn_copy_plain">Copy Command</span>
             </button>
           </div>
         </div>
@@ -966,53 +886,30 @@
           </label>
           <label class="pill-checkbox">
             <input type="checkbox" id="flag_dry_run" onchange="updateOutput()">
-            <span>--dry-run (проверка)</span>
+            <span data-i18n="flag_dry_run_label">--dry-run (test only)</span>
           </label>
         </div>
 
-        <div class="alert-box info">
-          <strong>💡 Совет:</strong> После установки запустите <code>sudo ./doctor.sh --audit</code> (вкладка <em>audit</em>) для проверки SSH, firewall, портов БД и SUID-бинарников.
-        </div>
+        <div class="alert-box info" data-i18n-html="audit_tip"></div>
       </div>
     </div>
 
     <!-- Collapsible Reference -->
     <section class="ref-section">
       <details class="ref-card">
-        <summary>📚 Справочник параметров: <code>install.sh</code>, <code>site-cli</code> и <code>doctor.sh --audit</code></summary>
+        <summary data-i18n-html="ref_summary"></summary>
         <div class="ref-grid">
           <div>
-            <h4>install.sh (основные флаги)</h4>
-            <ul>
-              <li><code>--mode=bare|standard|tune-only</code> — выбор режима</li>
-              <li><code>--tune-only</code> — только тюнинг и стеки без OpenShip</li>
-              <li><code>--stack=frankenphp|docker|custom|none</code> — пресет стека</li>
-              <li><code>--with-frankenphp / --with-mariadb / --with-redis / --with-docker / --with-site-cli</code></li>
-              <li><code>--no-host-control</code> — изоляция Control VPS (без Docker в Bare+Caddy)</li>
-              <li><code>--purge-apache</code> — автоудаление Apache2</li>
-            </ul>
+            <h4 data-i18n="ref_col1_title">install.sh (main flags)</h4>
+            <ul data-i18n-html="ref_col1_list"></ul>
           </div>
           <div>
             <h4>site-cli (FrankenPHP / Caddy)</h4>
-            <ul>
-              <li><code>site-cli create site.com --template=laravel --ssl</code></li>
-              <li><code>--template=</code> <code>opencart</code>, <code>wordpress</code>, <code>laravel</code>, <code>php</code>, <code>static</code>, <code>proxy</code></li>
-              <li><code>site-cli list</code> — список сайтов в <code>/etc/frankenphp/sites.d</code></li>
-              <li><code>site-cli ssl site.com</code> — включение авто-TLS</li>
-              <li><code>site-cli db site.com [create|dump|drop]</code></li>
-              <li><code>site-cli delete site.com --with-db</code></li>
-            </ul>
+            <ul data-i18n-html="ref_col2_list"></ul>
           </div>
           <div>
             <h4>doctor.sh --audit</h4>
-            <ul>
-              <li><code>PermitRootLogin</code>, <code>PasswordAuthentication</code>, порт SSH</li>
-              <li>UFW/nftables и открытые порты БД (<code>3306/5432/6379/27017</code>)</li>
-              <li>Fail2ban <code>sshd</code> jail и совпадение порта с <code>sshd -T</code></li>
-              <li>Неудачные входы за 24ч и security-обновления <code>apt</code></li>
-              <li>Аккаунты с <code>UID 0</code>, sudo-логирование, политика паролей, SUID</li>
-              <li><code>--report /path/report.txt</code> — экспорт отчёта</li>
-            </ul>
+            <ul data-i18n-html="ref_col3_list"></ul>
           </div>
         </div>
       </details>
@@ -1025,16 +922,373 @@
         &nbsp;·&nbsp;
         <a href="https://openship.io" target="_blank" rel="noopener">OpenShip.io</a>
         &nbsp;·&nbsp;
-        <a href="javascript:void(0)" onclick="clearFormCache()">Сбросить кэш формы</a>
+        <a href="javascript:void(0)" onclick="clearFormCache()" data-i18n="btn_reset_cache">Reset form cache</a>
       </div>
     </footer>
   </div>
 
-  <div class="toast" id="toast">✔ Скопировано в буфер обмена!</div>
+  <div class="toast" id="toast" data-i18n="toast_copied">✔ Copied to clipboard!</div>
 
   <script>
+    const I18N = {
+      en: {
+        page_title: 'OpenShip Deploy — Command Wizard',
+        hero_title: 'OpenShip Deploy — Server Setup Wizard',
+        hero_desc: 'Single-script toolkit for Ubuntu VPS tuning, stack installation (FrankenPHP/Caddy, MariaDB, Redis, Docker, <code>site-cli</code>), OpenShip Control Plane deployment, and security auditing (<code>doctor.sh --audit</code>). Configure the steps below — your command updates at the bottom.',
+        presets_kicker: '⚡ Quick Presets',
+        preset_bare_title: '🚀 Control VPS (Bare + Caddy)',
+        preset_bare_desc: 'Lightweight Node + embedded DB, Caddy proxy, no Docker (from 1 GB RAM).',
+        preset_std_title: '🐳 Control VPS (Docker)',
+        preset_std_desc: 'Full OpenShip Compose stack (Postgres + Redis, 2+ GB RAM).',
+        preset_fp_title: '⚡ Worker (FrankenPHP)',
+        preset_fp_desc: 'OS tuning + FrankenPHP (Caddy/PHP) + MariaDB + Redis + site-cli.',
+        preset_wd_title: '📦 Worker (Docker Host)',
+        preset_wd_desc: 'OS tuning + Docker Engine & Compose v2 without OpenShip panel.',
+        step1_pill: 'Mode',
+        step2_pill: 'Stacks',
+        step3_pill: 'OpenShip',
+        step4_pill: 'Tuning',
+        step1_title: 'Step 1. Mode & Server Role',
+        step1_subtitle: 'Choose whether this VPS runs the OpenShip Control Plane or acts as a worker server.',
+        mode_bare_desc: 'Native Node + embedded DB. Low RAM footprint (ideal for 1 GB VPS).',
+        mode_std_desc: 'Panel in Docker Compose (Postgres + Redis). Recommended for 2+ GB RAM.',
+        mode_tune_desc: 'OS hardening and selected stacks only (no OpenShip panel).',
+        hc_title: 'Host Control Terminal',
+        hc_desc: 'When disabled, Control VPS is isolated and Docker Engine is skipped in Bare+Caddy mode (saves ~200 MB RAM).',
+        step2_title: 'Step 2. Software Stacks',
+        step2_subtitle: 'Optional web server, database, and CLI tools installed right after OS tuning.',
+        stack_label: 'Stack Preset',
+        stack_opt_none: 'None (OS tuning / OpenShip only)',
+        stack_opt_fp: 'Full FrankenPHP Stack (FrankenPHP + MariaDB + Redis + site-cli)',
+        stack_opt_docker: 'Docker Engine & Compose v2',
+        stack_opt_custom: 'Custom component selection (--with-*)',
+        stack_help: 'For PHP/Laravel/WordPress workers choose <strong>Full FrankenPHP Stack</strong>; for containers choose <strong>Docker</strong>.',
+        fp_desc: 'Single binary with auto-SSL (Let\'s Encrypt), HTTP/3, and embedded PHP without php-fpm.',
+        mariadb_desc: 'Local database bound to 127.0.0.1:3306 (not exposed publicly).',
+        redis_desc: 'In-memory cache & queues bound to 127.0.0.1:6379.',
+        docker_desc: 'Official Docker CE and Compose v2 plugin.',
+        sitecli_desc: 'CLI tool <code>/usr/local/bin/site-cli</code> for FrankenPHP/Caddy sites and MariaDB databases.',
+        apache_title: 'Auto-remove Apache2',
+        apache_desc: 'Stops and purges pre-installed Apache2 to free :80/:443 and RAM.',
+        fp_port_warn: '<strong>⚠️ Ports :80/:443:</strong> OpenShip Proxy (Caddy/Edge) owns <code>:80/:443</code>, so FrankenPHP will bind locally to <code>127.0.0.1:8080</code>.',
+        step3_title: 'Step 3. Domain, Proxy & OpenShip Admin',
+        step3_subtitle: 'Configure public panel routing and administrator credentials.',
+        domain_label: 'Panel Domain',
+        domain_help: 'DNS A record must point to this VPS IP. Leave empty for local-only mode.',
+        proxy_caddy: 'Caddy (native, no Docker)',
+        proxy_edge: 'OpenShip Edge (Docker)',
+        proxy_none: 'None (local :3001 only)',
+        proxy_help: 'Caddy is recommended for Bare mode on low-RAM VPS.',
+        ssl_label: 'SSL / TLS Mode',
+        ssl_cf_flex: 'Cloudflare Flexible (HTTP :80)',
+        ssl_auto: 'Auto Let\'s Encrypt (ACME)',
+        ssl_cf_orig: 'Cloudflare Origin CA (.crt/.key)',
+        ssl_http_ip: 'Direct IP (HTTP :80)',
+        ssl_help: 'Use Flexible or Origin CA behind Cloudflare proxy to avoid redirect loops.',
+        admin_name_label: 'Admin Name',
+        admin_email_label: 'Admin Email',
+        admin_pass_label: 'Admin Password',
+        admin_pass_help: 'Minimum 8 characters; used on initial panel setup.',
+        btn_generate: '🎲 Generate',
+        step4_title: 'Step 4. OS Tuning & Security',
+        step4_subtitle: 'Kernel tuning, swap, SSH hardening, firewall, and Fail2ban.',
+        hostname_help: 'System hostname (<code>hostnamectl</code>).',
+        btn_auto: '📍 Auto',
+        timezone_help: 'Server timezone for logs and cron (e.g. <code>Europe/Kyiv</code>).',
+        ssh_port_label: 'SSH Port',
+        ssh_port_help: 'Automatically allowed in UFW and synced with Fail2ban.',
+        admin_user_toggle: 'Create Linux Admin User',
+        admin_user_toggle_desc: 'Optional. Disabled by default — enable if you want a dedicated sudo user instead of <code>root</code>.',
+        admin_user_label: 'Linux Admin Username',
+        admin_user_help: 'Sudo user created for SSH access.',
+        ssh_key_label: 'SSH Public Key (optional)',
+        ssh_key_help: 'When set, added to <code>authorized_keys</code> and enables key-only SSH login.',
+        swap_label: 'Swapfile Size',
+        swap_opt_2: '2 GB (Hybrid: zRAM 50% + 2 GB /swapfile)',
+        swap_opt_4: '4 GB (For 2+ GB RAM servers)',
+        swap_opt_1: '1 GB (Low disk space)',
+        swap_opt_0: '0 GB — disable disk swap (--disable-swap)',
+        swap_help: 'Prevents Node.js and builds from OOM-kill under memory pressure.',
+        ufw_desc: 'Allows SSH, :80, and :443 only; blocks :3001, :4000, :3306, :6379 from outside.',
+        f2b_desc: 'Automatically bans IPs after repeated failed SSH logins.',
+        btn_back: '← Back',
+        btn_next: 'Next →',
+        btn_next_stacks: 'Next: Stacks →',
+        btn_next_tuning: 'Next: Tuning →',
+        btn_copy: '📋 Copy Command',
+        btn_copy_plain: 'Copy Command',
+        btn_copied: 'Copied!',
+        term_title: 'Generated Command',
+        flag_dry_run_label: '--dry-run (test only)',
+        audit_tip: '<strong>💡 Tip:</strong> After installation, run <code>sudo ./doctor.sh --audit</code> (see <em>audit</em> tab) to check SSH, firewall, exposed DB ports, and SUID binaries.',
+        ref_summary: '📚 Parameter Reference: <code>install.sh</code>, <code>site-cli</code> &amp; <code>doctor.sh --audit</code>',
+        ref_col1_title: 'install.sh (main flags)',
+        ref_col1_list: '<li><code>--mode=bare|standard|tune-only</code> — execution mode</li><li><code>--tune-only</code> — tuning &amp; stacks without OpenShip</li><li><code>--stack=frankenphp|docker|custom|none</code> — stack preset</li><li><code>--with-frankenphp / --with-mariadb / --with-redis / --with-docker / --with-site-cli</code></li><li><code>--no-host-control</code> — isolate Control VPS (no Docker in Bare+Caddy)</li><li><code>--purge-apache</code> — auto-remove Apache2</li>',
+        ref_col2_list: '<li><code>site-cli create site.com --template=laravel --ssl</code></li><li><code>--template=</code> <code>opencart</code>, <code>wordpress</code>, <code>laravel</code>, <code>php</code>, <code>static</code>, <code>proxy</code></li><li><code>site-cli list</code> — list sites in <code>/etc/frankenphp/sites.d</code></li><li><code>site-cli ssl site.com</code> — enable auto-TLS</li><li><code>site-cli db site.com [create|dump|drop]</code></li><li><code>site-cli delete site.com --with-db</code></li>',
+        ref_col3_list: '<li><code>PermitRootLogin</code>, <code>PasswordAuthentication</code>, SSH port</li><li>UFW/nftables &amp; exposed DB ports (<code>3306/5432/6379/27017</code>)</li><li>Fail2ban <code>sshd</code> jail &amp; port alignment with <code>sshd -T</code></li><li>Failed logins (24h) &amp; pending <code>apt</code> security updates</li><li><code>UID 0</code> accounts, sudo logging, password policy, SUID</li><li><code>--report /path/report.txt</code> — export report</li>',
+        btn_reset_cache: 'Reset form cache',
+        toast_copied: '✔ Copied to clipboard!',
+        chip_mode: 'Mode',
+        chip_docker: 'Docker',
+        chip_stack: 'Stack',
+        chip_swap: 'Swap',
+        yes: 'Yes',
+        no_docker: 'No (Docker-free)'
+      },
+      ru: {
+        page_title: 'OpenShip Deploy — Мастер сборки команд',
+        hero_title: 'OpenShip Deploy — Мастер настройки сервера',
+        hero_desc: 'Единый инструмент для тюнинга Ubuntu VPS, установки стеков (FrankenPHP/Caddy, MariaDB, Redis, Docker, <code>site-cli</code>), развёртывания панели OpenShip и аудита безопасности (<code>doctor.sh --audit</code>). Настройте шаги ниже — готовая команда появится внизу.',
+        presets_kicker: '⚡ Быстрые пресеты',
+        preset_bare_title: '🚀 Control VPS (Bare + Caddy)',
+        preset_bare_desc: 'Лёгкий Node + embedded DB, Caddy, без Docker (от 1 GB RAM).',
+        preset_std_title: '🐳 Control VPS (Docker)',
+        preset_std_desc: 'Полный стек OpenShip в Docker Compose (Postgres + Redis, 2+ GB RAM).',
+        preset_fp_title: '⚡ Worker (FrankenPHP)',
+        preset_fp_desc: 'Тюнинг + FrankenPHP (Caddy/PHP) + MariaDB + Redis + site-cli.',
+        preset_wd_title: '📦 Worker (Docker Host)',
+        preset_wd_desc: 'Только тюнинг ОС и Docker Engine + Compose v2 без панели.',
+        step1_pill: 'Режим',
+        step2_pill: 'Стеки',
+        step3_pill: 'OpenShip',
+        step4_pill: 'Тюнинг',
+        step1_title: 'Шаг 1. Режим и роль сервера',
+        step1_subtitle: 'Выберите, будет ли этот VPS панелью управления OpenShip или worker-сервером для проектов.',
+        mode_bare_desc: 'Нативный Node + встроенная БД. Экономит RAM (подходит для 1 GB VPS).',
+        mode_std_desc: 'Панель в Docker Compose (Postgres + Redis). Рекомендуется от 2+ GB RAM.',
+        mode_tune_desc: 'Только тюнинг ОС и выбранные стеки (без панели OpenShip).',
+        hc_title: 'Host Control Terminal',
+        hc_desc: 'Если выключено, Control VPS изолирован и Docker Engine в Bare+Caddy не устанавливается (экономия ~200 MB RAM).',
+        step2_title: 'Шаг 2. Программные стеки',
+        step2_subtitle: 'Опциональная установка веб-сервера, БД и утилит сразу после системного тюнинга.',
+        stack_label: 'Набор стеков',
+        stack_opt_none: 'Без дополнительных стеков (только тюнинг / OpenShip)',
+        stack_opt_fp: 'Full FrankenPHP Stack (FrankenPHP + MariaDB + Redis + site-cli)',
+        stack_opt_docker: 'Docker Engine & Compose v2',
+        stack_opt_custom: 'Выборочная установка (--with-*)',
+        stack_help: 'Для worker-сервера под PHP/Laravel/WordPress выбирайте <strong>Full FrankenPHP Stack</strong>, под контейнеры — <strong>Docker</strong>.',
+        fp_desc: 'Один бинарник с авто-SSL (Let\'s Encrypt), HTTP/3 и встроенным PHP без php-fpm.',
+        mariadb_desc: 'Локальная БД на 127.0.0.1:3306 (не торчит наружу).',
+        redis_desc: 'Кэш и очереди на 127.0.0.1:6379.',
+        docker_desc: 'Официальный Docker CE и плагин Compose v2.',
+        sitecli_desc: 'Утилита <code>/usr/local/bin/site-cli</code> для создания сайтов в FrankenPHP/Caddy и БД.',
+        apache_title: 'Удалить Apache2 автоматически',
+        apache_desc: 'Останавливает и удаляет предустановленный Apache2, чтобы освободить :80/:443 и RAM.',
+        fp_port_warn: '<strong>⚠️ Порты :80/:443:</strong> OpenShip Proxy (Caddy/Edge) уже занимает <code>:80/:443</code>, поэтому FrankenPHP автоматически поднимется локально на <code>127.0.0.1:8080</code>.',
+        step3_title: 'Шаг 3. Домен, Proxy и Администратор OpenShip',
+        step3_subtitle: 'Настройка публичного доступа к панели и учётной записи администратора.',
+        domain_label: 'Домен панели',
+        domain_help: 'DNS A-запись должна указывать на IP этого VPS. Для локального режима оставьте пустым.',
+        proxy_caddy: 'Caddy (нативный, без Docker)',
+        proxy_edge: 'OpenShip Edge (Docker)',
+        proxy_none: 'None (только локальный :3001)',
+        proxy_help: 'Caddy рекомендуется для Bare-режима на малых VPS.',
+        ssl_label: 'Режим SSL / TLS',
+        ssl_cf_flex: 'Cloudflare Flexible (HTTP :80)',
+        ssl_auto: 'Auto Let\'s Encrypt (ACME)',
+        ssl_cf_orig: 'Cloudflare Origin CA (.crt/.key)',
+        ssl_http_ip: 'Direct IP (HTTP :80)',
+        ssl_help: 'Для проксирования через Cloudflare без петель редиректа выбирайте Flexible или Origin CA.',
+        admin_name_label: 'Имя админа',
+        admin_email_label: 'Email админа',
+        admin_pass_label: 'Пароль админа',
+        admin_pass_help: 'Минимум 8 символов; передаётся только при первом запуске панели.',
+        btn_generate: '🎲 Сгенерировать',
+        step4_title: 'Шаг 4. Тюнинг ОС и безопасность',
+        step4_subtitle: 'Параметры ядра, swap, SSH, firewall и защиты от перебора паролей.',
+        hostname_help: 'Системное имя сервера (<code>hostnamectl</code>).',
+        btn_auto: '📍 Авто',
+        timezone_help: 'Часовой пояс для логов и cron (например, <code>Europe/Kyiv</code>).',
+        ssh_port_label: 'SSH Порт',
+        ssh_port_help: 'Автоматически открывается в UFW и прописывается в Fail2ban.',
+        admin_user_toggle: 'Создать Linux Admin User',
+        admin_user_toggle_desc: 'Опционально. По умолчанию выключено — используйте, если нужен отдельный sudo-пользователь вместо <code>root</code>.',
+        admin_user_label: 'Имя Linux Admin User',
+        admin_user_help: 'Пользователь с sudo-правами для SSH-доступа.',
+        ssh_key_label: 'Публичный SSH-ключ (опционально)',
+        ssh_key_help: 'Если указан, добавляется в <code>authorized_keys</code> и включает вход только по ключу.',
+        swap_label: 'Размер Swapfile',
+        swap_opt_2: '2 GB (Гибрид: zRAM 50% + 2 GB /swapfile)',
+        swap_opt_4: '4 GB (Для серверов 2+ GB RAM)',
+        swap_opt_1: '1 GB (При малом диске)',
+        swap_opt_0: '0 GB — отключить дисковый swap (--disable-swap)',
+        swap_help: 'Защищает Node.js/сборки от OOM-kill при нехватке RAM.',
+        ufw_desc: 'Разрешает только SSH, :80 и :443; закрывает :3001, :4000, :3306, :6379 снаружи.',
+        f2b_desc: 'Автобан IP после серии неудачных попыток входа по SSH.',
+        btn_back: '← Назад',
+        btn_next: 'Далее →',
+        btn_next_stacks: 'Далее: Стеки →',
+        btn_next_tuning: 'Далее: Тюнинг →',
+        btn_copy: '📋 Скопировать команду',
+        btn_copy_plain: 'Скопировать команду',
+        btn_copied: 'Скопировано!',
+        term_title: 'Сгенерированная команда',
+        flag_dry_run_label: '--dry-run (проверка)',
+        audit_tip: '<strong>💡 Совет:</strong> После установки запустите <code>sudo ./doctor.sh --audit</code> (вкладка <em>audit</em>) для проверки SSH, firewall, портов БД и SUID-бинарников.',
+        ref_summary: '📚 Справочник параметров: <code>install.sh</code>, <code>site-cli</code> и <code>doctor.sh --audit</code>',
+        ref_col1_title: 'install.sh (основные флаги)',
+        ref_col1_list: '<li><code>--mode=bare|standard|tune-only</code> — выбор режима</li><li><code>--tune-only</code> — только тюнинг и стеки без OpenShip</li><li><code>--stack=frankenphp|docker|custom|none</code> — пресет стека</li><li><code>--with-frankenphp / --with-mariadb / --with-redis / --with-docker / --with-site-cli</code></li><li><code>--no-host-control</code> — изоляция Control VPS (без Docker в Bare+Caddy)</li><li><code>--purge-apache</code> — автоудаление Apache2</li>',
+        ref_col2_list: '<li><code>site-cli create site.com --template=laravel --ssl</code></li><li><code>--template=</code> <code>opencart</code>, <code>wordpress</code>, <code>laravel</code>, <code>php</code>, <code>static</code>, <code>proxy</code></li><li><code>site-cli list</code> — список сайтов в <code>/etc/frankenphp/sites.d</code></li><li><code>site-cli ssl site.com</code> — включение авто-TLS</li><li><code>site-cli db site.com [create|dump|drop]</code></li><li><code>site-cli delete site.com --with-db</code></li>',
+        ref_col3_list: '<li><code>PermitRootLogin</code>, <code>PasswordAuthentication</code>, порт SSH</li><li>UFW/nftables и открытые порты БД (<code>3306/5432/6379/27017</code>)</li><li>Fail2ban <code>sshd</code> jail и совпадение порта с <code>sshd -T</code></li><li>Неудачные входы за 24ч и security-обновления <code>apt</code></li><li>Аккаунты с <code>UID 0</code>, sudo-логирование, политика паролей, SUID</li><li><code>--report /path/report.txt</code> — экспорт отчёта</li>',
+        btn_reset_cache: 'Сбросить кэш формы',
+        toast_copied: '✔ Скопировано в буфер обмена!',
+        chip_mode: 'Режим',
+        chip_docker: 'Docker',
+        chip_stack: 'Стек',
+        chip_swap: 'Swap',
+        yes: 'Да',
+        no_docker: 'Нет (Без Docker)'
+      },
+      ua: {
+        page_title: 'OpenShip Deploy — Майстер збірки команд',
+        hero_title: 'OpenShip Deploy — Майстер налаштування сервера',
+        hero_desc: 'Єдиний інструмент для тюнінгу Ubuntu VPS, встановлення стеків (FrankenPHP/Caddy, MariaDB, Redis, Docker, <code>site-cli</code>), розгортання панелі OpenShip та аудиту безпеки (<code>doctor.sh --audit</code>). Налаштуйте кроки нижче — готова команда з\'явиться внизу.',
+        presets_kicker: '⚡ Швидкі пресети',
+        preset_bare_title: '🚀 Control VPS (Bare + Caddy)',
+        preset_bare_desc: 'Легкий Node + embedded DB, Caddy, без Docker (від 1 GB RAM).',
+        preset_std_title: '🐳 Control VPS (Docker)',
+        preset_std_desc: 'Повний стек OpenShip у Docker Compose (Postgres + Redis, 2+ GB RAM).',
+        preset_fp_title: '⚡ Worker (FrankenPHP)',
+        preset_fp_desc: 'Тюнінг + FrankenPHP (Caddy/PHP) + MariaDB + Redis + site-cli.',
+        preset_wd_title: '📦 Worker (Docker Host)',
+        preset_wd_desc: 'Лише тюнінг ОС і Docker Engine + Compose v2 без панелі.',
+        step1_pill: 'Режим',
+        step2_pill: 'Стеки',
+        step3_pill: 'OpenShip',
+        step4_pill: 'Тюнінг',
+        step1_title: 'Крок 1. Режим та роль сервера',
+        step1_subtitle: 'Оберіть, чи буде цей VPS панеллю керування OpenShip або worker-сервером для проєктів.',
+        mode_bare_desc: 'Нативний Node + вбудована БД. Економить RAM (підходить для 1 GB VPS).',
+        mode_std_desc: 'Панель у Docker Compose (Postgres + Redis). Рекомендовано від 2+ GB RAM.',
+        mode_tune_desc: 'Лише тюнінг ОС та обрані стеки (без панелі OpenShip).',
+        hc_title: 'Host Control Terminal',
+        hc_desc: 'Якщо вимкнено, Control VPS ізольовано і Docker Engine у Bare+Caddy не встановлюється (економія ~200 MB RAM).',
+        step2_title: 'Крок 2. Програмні стеки',
+        step2_subtitle: 'Опціональне встановлення веб-сервера, БД та утиліт одразу після системного тюнінгу.',
+        stack_label: 'Набір стеків',
+        stack_opt_none: 'Без додаткових стеків (лише тюнінг / OpenShip)',
+        stack_opt_fp: 'Full FrankenPHP Stack (FrankenPHP + MariaDB + Redis + site-cli)',
+        stack_opt_docker: 'Docker Engine & Compose v2',
+        stack_opt_custom: 'Вибіркове встановлення (--with-*)',
+        stack_help: 'Для worker-сервера під PHP/Laravel/WordPress обирайте <strong>Full FrankenPHP Stack</strong>, під контейнери — <strong>Docker</strong>.',
+        fp_desc: 'Один бінарник з авто-SSL (Let\'s Encrypt), HTTP/3 та вбудованим PHP без php-fpm.',
+        mariadb_desc: 'Локальна БД на 127.0.0.1:3306 (не відкрита назовні).',
+        redis_desc: 'Кеш і черги на 127.0.0.1:6379.',
+        docker_desc: 'Офіційний Docker CE та плагін Compose v2.',
+        sitecli_desc: 'Утиліта <code>/usr/local/bin/site-cli</code> для створення сайтів у FrankenPHP/Caddy та БД.',
+        apache_title: 'Видалити Apache2 автоматично',
+        apache_desc: 'Зупиняє та видаляє попередньо встановлений Apache2, щоб звільнити :80/:443 та RAM.',
+        fp_port_warn: '<strong>⚠️ Порти :80/:443:</strong> OpenShip Proxy (Caddy/Edge) вже займає <code>:80/:443</code>, тому FrankenPHP автоматично підніметься локально на <code>127.0.0.1:8080</code>.',
+        step3_title: 'Крок 3. Домен, Proxy та Адміністратор OpenShip',
+        step3_subtitle: 'Налаштування публічного доступу до панелі та облікового запису адміністратора.',
+        domain_label: 'Домен панелі',
+        domain_help: 'DNS A-запис має вказувати на IP цього VPS. Для локального режиму залиште порожнім.',
+        proxy_caddy: 'Caddy (нативний, без Docker)',
+        proxy_edge: 'OpenShip Edge (Docker)',
+        proxy_none: 'None (лише локальний :3001)',
+        proxy_help: 'Caddy рекомендовано для Bare-режиму на малих VPS.',
+        ssl_label: 'Режим SSL / TLS',
+        ssl_cf_flex: 'Cloudflare Flexible (HTTP :80)',
+        ssl_auto: 'Auto Let\'s Encrypt (ACME)',
+        ssl_cf_orig: 'Cloudflare Origin CA (.crt/.key)',
+        ssl_http_ip: 'Direct IP (HTTP :80)',
+        ssl_help: 'Для проксіювання через Cloudflare без петель редиректу обирайте Flexible або Origin CA.',
+        admin_name_label: 'Ім\'я адміна',
+        admin_email_label: 'Email адміна',
+        admin_pass_label: 'Пароль адміна',
+        admin_pass_help: 'Мінімум 8 символів; передається лише при першому запуску панелі.',
+        btn_generate: '🎲 Згенерувати',
+        step4_title: 'Крок 4. Тюнінг ОС та безпека',
+        step4_subtitle: 'Параметри ядра, swap, SSH, firewall та захист від перебору паролів.',
+        hostname_help: 'Системне ім\'я сервера (<code>hostnamectl</code>).',
+        btn_auto: '📍 Авто',
+        timezone_help: 'Часовий пояс для логів та cron (наприклад, <code>Europe/Kyiv</code>).',
+        ssh_port_label: 'SSH Порт',
+        ssh_port_help: 'Автоматично відкривається в UFW та синхронізується з Fail2ban.',
+        admin_user_toggle: 'Створити Linux Admin User',
+        admin_user_toggle_desc: 'Опціонально. За замовчуванням вимкнено — увімкніть, якщо потрібен окремий sudo-користувач замість <code>root</code>.',
+        admin_user_label: 'Ім\'я Linux Admin User',
+        admin_user_help: 'Користувач із sudo-правами для SSH-доступу.',
+        ssh_key_label: 'Публічний SSH-ключ (опціонально)',
+        ssh_key_help: 'Якщо вказано, додається в <code>authorized_keys</code> і вмикає вхід лише за ключем.',
+        swap_label: 'Розмір Swapfile',
+        swap_opt_2: '2 GB (Гібрид: zRAM 50% + 2 GB /swapfile)',
+        swap_opt_4: '4 GB (Для серверів 2+ GB RAM)',
+        swap_opt_1: '1 GB (При малому диску)',
+        swap_opt_0: '0 GB — вимкнути дисковий swap (--disable-swap)',
+        swap_help: 'Захищає Node.js та збірки від OOM-kill при нестачі RAM.',
+        ufw_desc: 'Дозволяє лише SSH, :80 та :443; закриває :3001, :4000, :3306, :6379 ззовні.',
+        f2b_desc: 'Автобан IP після серії невдалих спроб входу по SSH.',
+        btn_back: '← Назад',
+        btn_next: 'Далі →',
+        btn_next_stacks: 'Далі: Стеки →',
+        btn_next_tuning: 'Далі: Тюнінг →',
+        btn_copy: '📋 Скопіювати команду',
+        btn_copy_plain: 'Скопіювати команду',
+        btn_copied: 'Скопійовано!',
+        term_title: 'Згенерована команда',
+        flag_dry_run_label: '--dry-run (перевірка)',
+        audit_tip: '<strong>💡 Порада:</strong> Після встановлення запустіть <code>sudo ./doctor.sh --audit</code> (вкладка <em>audit</em>) для перевірки SSH, firewall, портів БД та SUID-бінарників.',
+        ref_summary: '📚 Довідник параметрів: <code>install.sh</code>, <code>site-cli</code> та <code>doctor.sh --audit</code>',
+        ref_col1_title: 'install.sh (основні прапори)',
+        ref_col1_list: '<li><code>--mode=bare|standard|tune-only</code> — вибір режиму</li><li><code>--tune-only</code> — лише тюнінг і стеки без OpenShip</li><li><code>--stack=frankenphp|docker|custom|none</code> — пресет стека</li><li><code>--with-frankenphp / --with-mariadb / --with-redis / --with-docker / --with-site-cli</code></li><li><code>--no-host-control</code> — ізоляція Control VPS (без Docker у Bare+Caddy)</li><li><code>--purge-apache</code> — автовидалення Apache2</li>',
+        ref_col2_list: '<li><code>site-cli create site.com --template=laravel --ssl</code></li><li><code>--template=</code> <code>opencart</code>, <code>wordpress</code>, <code>laravel</code>, <code>php</code>, <code>static</code>, <code>proxy</code></li><li><code>site-cli list</code> — список сайтів у <code>/etc/frankenphp/sites.d</code></li><li><code>site-cli ssl site.com</code> — увімкнення авто-TLS</li><li><code>site-cli db site.com [create|dump|drop]</code></li><li><code>site-cli delete site.com --with-db</code></li>',
+        ref_col3_list: '<li><code>PermitRootLogin</code>, <code>PasswordAuthentication</code>, порт SSH</li><li>UFW/nftables та відкриті порти БД (<code>3306/5432/6379/27017</code>)</li><li>Fail2ban <code>sshd</code> jail та збіг порту з <code>sshd -T</code></li><li>Невдалі входи за 24г та security-оновлення <code>apt</code></li><li>Акаунти з <code>UID 0</code>, sudo-логування, політика паролів, SUID</li><li><code>--report /path/report.txt</code> — експорт звіту</li>',
+        btn_reset_cache: 'Скинути кеш форми',
+        toast_copied: '✔ Скопійовано в буфер обміну!',
+        chip_mode: 'Режим',
+        chip_docker: 'Docker',
+        chip_stack: 'Стек',
+        chip_swap: 'Swap',
+        yes: 'Так',
+        no_docker: 'Ні (Без Docker)'
+      }
+    };
+
+    let currentLang = 'en';
     let activeTab = 'curl';
     let currentStep = 1;
+
+    function t(key) {
+      return (I18N[currentLang] && I18N[currentLang][key]) || I18N.en[key] || key;
+    }
+
+    function setLang(lang, skipSave) {
+      if (!I18N[lang]) lang = 'en';
+      currentLang = lang;
+      document.documentElement.lang = (lang === 'ua') ? 'uk' : lang;
+      document.title = t('page_title');
+
+      ['en', 'ru', 'ua'].forEach(l => {
+        document.getElementById('lang-' + l).classList.toggle('active', l === lang);
+      });
+
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        el.textContent = t(el.getAttribute('data-i18n'));
+      });
+      document.querySelectorAll('[data-i18n-html]').forEach(el => {
+        el.innerHTML = t(el.getAttribute('data-i18n-html'));
+      });
+
+      if (!skipSave) {
+        try { localStorage.setItem('openship_lang', lang); } catch (e) {}
+      }
+      updateOutput();
+    }
+
+    function detectInitialLang() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const qp = params.get('lang');
+        if (qp && I18N[qp]) return qp;
+        const saved = localStorage.getItem('openship_lang');
+        if (saved && I18N[saved]) return saved;
+        const nav = (navigator.language || 'en').toLowerCase();
+        if (nav.startsWith('uk')) return 'ua';
+        if (nav.startsWith('ru')) return 'ru';
+      } catch (e) {}
+      return 'en';
+    }
 
     function escapeHtml(str) {
       return String(str)
@@ -1107,6 +1361,12 @@
     function updateStackPreset() {
       const preset = document.getElementById('stack_preset').value;
       document.getElementById('custom-stack-panel').style.display = (preset === 'custom') ? 'block' : 'none';
+      updateOutput();
+    }
+
+    function updateAdminUserToggle() {
+      const enabled = document.getElementById('enable_admin_user').checked;
+      document.getElementById('group-admin-user').style.display = enabled ? 'block' : 'none';
       updateOutput();
     }
 
@@ -1229,6 +1489,7 @@
       const hostname = document.getElementById('hostname').value.trim();
       const timezone = document.getElementById('timezone').value.trim();
       const sshPort = document.getElementById('ssh_port').value.trim();
+      const enableAdminUser = document.getElementById('enable_admin_user').checked;
       const adminUser = document.getElementById('admin_user').value.trim();
       const sshKey = document.getElementById('ssh_key').value.trim();
       const swapSize = document.getElementById('swap_size').value;
@@ -1268,7 +1529,7 @@
       if (hostname && hostname !== 'openship-control') flags.push(`--hostname=${hostname}`);
       if (timezone && timezone !== 'UTC') flags.push(`--timezone=${timezone}`);
       if (sshPort && sshPort !== '22') flags.push(`--ssh-port=${sshPort}`);
-      if (adminUser && adminUser !== 'openship') flags.push(`--admin-user=${adminUser}`);
+      if (enableAdminUser && adminUser) flags.push(`--admin-user=${adminUser}`);
       if (sshKey) flags.push(`--ssh-key="${sshKey}"`);
       if (swapSize === '0') {
         flags.push(`--disable-swap`);
@@ -1282,10 +1543,10 @@
 
       const dockerUsed = (mode === 'standard') || (!isTuneOnly && (hostControl || proxyMode === 'edge')) || usesDockerStack;
       const chips = [
-        `Режим: <strong>${escapeHtml(mode)}</strong>`,
-        `Docker: <strong>${dockerUsed ? 'Да' : 'Нет (Без Docker)'}</strong>`,
-        `Стек: <strong>${escapeHtml(stackPreset)}</strong>`,
-        `Swap: <strong>${swapSize === '0' ? 'zRAM only' : escapeHtml(swapSize) + ' GB'}</strong>`
+        `${t('chip_mode')}: <strong>${escapeHtml(mode)}</strong>`,
+        `${t('chip_docker')}: <strong>${dockerUsed ? t('yes') : t('no_docker')}</strong>`,
+        `${t('chip_stack')}: <strong>${escapeHtml(stackPreset)}</strong>`,
+        `${t('chip_swap')}: <strong>${swapSize === '0' ? 'zRAM only' : escapeHtml(swapSize) + ' GB'}</strong>`
       ];
       document.getElementById('summary-strip').innerHTML = chips.map(c => `<span class="summary-chip">${c}</span>`).join('');
 
@@ -1296,8 +1557,12 @@
       } else if (activeTab === 'local') {
         cmd = `<span class="cmd-prefix">sudo ./install.sh</span> \\\n  ` +
           flags.map(formatFlagHtml).join(' \\\n  ');
+      } else if (activeTab === 'interactive') {
+        cmd = `<span class="cmd-prefix">curl</span> -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/install.sh <span class="cmd-pipe">|</span> <span class="cmd-prefix">sudo bash</span>`;
       } else if (activeTab === 'audit') {
         cmd = `<span class="cmd-prefix">curl</span> -fsSL https://raw.githubusercontent.com/HomaEEE/OpenShip-deploy/main/doctor.sh <span class="cmd-pipe">|</span> <span class="cmd-prefix">sudo bash</span> -s -- <span class="cmd-flag">--audit</span>`;
+      } else if (activeTab === 'git') {
+        cmd = `<span class="cmd-prefix">git clone</span> https://github.com/HomaEEE/OpenShip-deploy.git <span class="cmd-pipe">&amp;&amp;</span> <span class="cmd-prefix">cd</span> OpenShip-deploy <span class="cmd-pipe">&amp;&amp;</span> <span class="cmd-prefix">sudo ./install.sh</span> <span class="cmd-flag">--help</span>`;
       } else {
         const envs = [
           `INSTALL_MODE="${escapeHtml(mode)}"`,
@@ -1320,18 +1585,8 @@
         toast.style.display = 'block';
         setTimeout(() => { toast.style.display = 'none'; }, 2200);
         const btnText = document.getElementById('copy-text');
-        btnText.innerText = 'Скопировано!';
-        setTimeout(() => { btnText.innerText = 'Скопировать команду'; }, 1800);
-      });
-    }
-
-    function copySnippet(elementId) {
-      const el = document.getElementById(elementId);
-      const text = el.innerText || el.textContent;
-      navigator.clipboard.writeText(text).then(() => {
-        const toast = document.getElementById('toast');
-        toast.style.display = 'block';
-        setTimeout(() => { toast.style.display = 'none'; }, 2200);
+        btnText.innerText = t('btn_copied');
+        setTimeout(() => { btnText.innerText = t('btn_copy_plain'); }, 1800);
       });
     }
 
@@ -1364,6 +1619,7 @@
           hostname: document.getElementById('hostname').value,
           timezone: document.getElementById('timezone').value,
           sshPort: document.getElementById('ssh_port').value,
+          enableAdminUser: document.getElementById('enable_admin_user').checked,
           adminUser: document.getElementById('admin_user').value,
           sshKey: document.getElementById('ssh_key').value,
           swapSize: document.getElementById('swap_size').value,
@@ -1410,6 +1666,7 @@
         if (data.hostname !== undefined) document.getElementById('hostname').value = data.hostname;
         if (data.timezone !== undefined) document.getElementById('timezone').value = data.timezone;
         if (data.sshPort !== undefined) document.getElementById('ssh_port').value = data.sshPort;
+        if (typeof data.enableAdminUser === 'boolean') document.getElementById('enable_admin_user').checked = data.enableAdminUser;
         if (data.adminUser !== undefined) document.getElementById('admin_user').value = data.adminUser;
         if (data.sshKey !== undefined) document.getElementById('ssh_key').value = data.sshKey;
         if (data.swapSize !== undefined) document.getElementById('swap_size').value = data.swapSize;
@@ -1425,6 +1682,7 @@
         }
         if (data.currentStep) goToStep(data.currentStep);
         updateStackPreset();
+        updateAdminUserToggle();
         updateProxyMode();
       } catch (e) {
         console.warn('LocalStorage restore failed:', e);
@@ -1437,7 +1695,7 @@
     }
 
     loadFormCache();
-    updateOutput();
+    setLang(detectInitialLang(), true);
   </script>
 </body>
 </html>
