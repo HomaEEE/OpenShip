@@ -113,22 +113,26 @@
       padding: 1.25rem;
       margin-bottom: 1.25rem;
       backdrop-filter: blur(12px);
+      min-width: 0;
+      overflow: hidden;
     }
     .card.highlight { border-color: var(--border-accent); }
     .card-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.35rem; }
     .card-title { font-size: 1.02rem; font-weight: 700; }
     .card-subtitle { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1rem; }
 
-    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; }
-    @media (max-width: 960px) { .grid-3 { grid-template-columns: 1fr; } }
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
-    @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.1rem; }
+    @media (max-width: 1120px) { .grid-3 { grid-template-columns: minmax(0, 1fr); } }
+    .two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; }
+    @media (max-width: 600px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
 
-    .form-group { margin-bottom: 0.9rem; }
+    .form-group { margin-bottom: 0.9rem; min-width: 0; }
     .form-label {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 0.25rem;
       font-size: 0.8rem;
       font-weight: 600;
       margin-bottom: 0.32rem;
@@ -140,6 +144,8 @@
       background: rgba(56, 189, 248, 0.1);
       padding: 0.1rem 0.4rem;
       border-radius: var(--radius-sm);
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }
     .form-input, .form-select {
       width: 100%;
@@ -313,6 +319,7 @@
         <nav class="nav-pills" aria-label="Pages">
           <a href="index.html" class="nav-link" data-i18n="nav_wizard">⚓ OpenShip Wizard</a>
           <a href="db-stack.html" class="nav-link active" data-i18n="nav_db_stack">🗄️ MariaDB + Redis + PMA</a>
+          <a href="password.html" class="nav-link" data-i18n="nav_password">🔐 Passwords</a>
         </nav>
         <div class="lang-switcher" role="group" aria-label="Language selector">
           <button type="button" class="lang-btn" id="lang-en" onclick="setLang('en')">EN</button>
@@ -514,6 +521,8 @@
       <div>
         <a href="index.html" data-i18n="nav_wizard">⚓ OpenShip Wizard</a>
         &nbsp;·&nbsp;
+        <a href="password.html" data-i18n="nav_password">🔐 Passwords</a>
+        &nbsp;·&nbsp;
         <a href="https://github.com/HomaEEE/OpenShip-deploy" target="_blank" rel="noopener">GitHub Repository</a>
         &nbsp;·&nbsp;
         <a href="javascript:void(0)" onclick="clearCache()" data-i18n="btn_reset_cache">Reset form cache</a>
@@ -529,6 +538,7 @@
         page_title: 'OpenShip DB Stack — MariaDB + Redis + phpMyAdmin',
         nav_wizard: '⚓ OpenShip Wizard',
         nav_db_stack: '🗄️ MariaDB + Redis + PMA',
+        nav_password: '🔐 Passwords',
         hero_title: 'MariaDB + Redis + phpMyAdmin (FrankenPHP)',
         hero_desc: 'Configure and deploy the shared database stack (<code>services/mariadb-redis</code>): MariaDB 11.4, Redis 7.4, and FrankenPHP-powered phpMyAdmin with automatic updates and OpenShip Edge domain support.',
         hw_title: 'Server RAM Auto-Sizing',
@@ -559,6 +569,7 @@
         page_title: 'OpenShip DB Stack — MariaDB + Redis + phpMyAdmin',
         nav_wizard: '⚓ Мастер OpenShip',
         nav_db_stack: '🗄️ MariaDB + Redis + PMA',
+        nav_password: '🔐 Пароли',
         hero_title: 'MariaDB + Redis + phpMyAdmin (FrankenPHP)',
         hero_desc: 'Настройка и развёртывание общего стека БД (<code>services/mariadb-redis</code>): MariaDB 11.4, Redis 7.4 и phpMyAdmin на FrankenPHP с поддержкой обновлений до <code>latest</code> и домена через OpenShip Edge.',
         hw_title: 'Автоподбор лимитов по RAM сервера',
@@ -589,6 +600,7 @@
         page_title: 'OpenShip DB Stack — MariaDB + Redis + phpMyAdmin',
         nav_wizard: '⚓ Майстер OpenShip',
         nav_db_stack: '🗄️ MariaDB + Redis + PMA',
+        nav_password: '🔐 Паролі',
         hero_title: 'MariaDB + Redis + phpMyAdmin (FrankenPHP)',
         hero_desc: 'Налаштування та розгортання спільного стеку БД (<code>services/mariadb-redis</code>): MariaDB 11.4, Redis 7.4 та phpMyAdmin на FrankenPHP із підтримкою оновлень до <code>latest</code> і домену через OpenShip Edge.',
         hw_title: 'Автопідбір лімітів за RAM сервера',
