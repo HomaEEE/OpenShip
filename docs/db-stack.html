@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenShip DB Stack — MariaDB + Redis + phpMyAdmin</title>
+  <meta name="description" content="Configuration & deployment generator for MariaDB 11.4, Redis 7.4, and phpMyAdmin (FrankenPHP) on OpenShip.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #07090e;
+      --bg-card: rgba(15, 23, 38, 0.82);
+      --bg-input: #111a2b;
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(56, 189, 248, 0.35);
+      --border-focus: #38bdf8;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent-cyan: #38bdf8;
+      --accent-emerald: #10b981;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --radius-full: 9999px;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-base);
+      background-image:
+        radial-gradient(circle at 12% 8%, rgba(56, 189, 248, 0.09) 0%, transparent 38%),
+        radial-gradient(circle at 88% 18%, rgba(16, 185, 129, 0.08) 0%, transparent 40%);
+      background-attachment: fixed;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.55;
+      min-height: 100vh;
+      padding: 2rem 1rem 4rem;
+    }
+
+    .container { max-width: 1180px; margin: 0 auto; }
+
+    header { text-align: center; margin-bottom: 2rem; }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.1rem;
+    }
+    .nav-pills { display: inline-flex; gap: 0.45rem; flex-wrap: wrap; align-items: center; }
+    .nav-link {
+      text-decoration: none;
+      font-size: 0.76rem;
+      font-weight: 600;
+      padding: 0.3rem 0.85rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-card);
+      color: var(--text-muted);
+      transition: all 0.15s;
+    }
+    .nav-link:hover { border-color: var(--border-accent); color: var(--text-main); }
+    .nav-link.active {
+      background: rgba(56, 189, 248, 0.14);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: var(--accent-cyan);
+    }
+
+    .lang-switcher {
+      display: inline-flex;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-full);
+      padding: 0.2rem;
+      gap: 0.2rem;
+    }
+    .lang-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.74rem;
+      font-weight: 700;
+      padding: 0.28rem 0.7rem;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+    }
+    .lang-btn:hover { color: var(--text-main); }
+    .lang-btn.active { background: rgba(56, 189, 248, 0.2); color: var(--accent-cyan); }
+
+    h1 {
+      font-size: clamp(1.75rem, 3.2vw, 2.4rem);
+      font-weight: 700;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.6rem;
+      background: linear-gradient(135deg, #f8fafc 20%, #10b981 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-desc { max-width: 780px; margin: 0 auto; color: var(--text-muted); font-size: 0.95rem; }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
+      backdrop-filter: blur(12px);
+    }
+    .card.highlight { border-color: var(--border-accent); }
+    .card-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.35rem; }
+    .card-title { font-size: 1.02rem; font-weight: 700; }
+    .card-subtitle { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1rem; }
+
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.1rem; }
+    @media (max-width: 960px) { .grid-3 { grid-template-columns: 1fr; } }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
+    @media (max-width: 600px) { .two-col { grid-template-columns: 1fr; } }
+
+    .form-group { margin-bottom: 0.9rem; }
+    .form-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 0.32rem;
+    }
+    .env-tag {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.1);
+      padding: 0.1rem 0.4rem;
+      border-radius: var(--radius-sm);
+    }
+    .form-input, .form-select {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 0.52rem 0.7rem;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 0.84rem;
+      outline: none;
+    }
+    .form-input:focus, .form-select:focus { border-color: var(--border-focus); }
+    .field-help { font-size: 0.74rem; color: var(--text-dim); margin-top: 0.28rem; line-height: 1.38; }
+
+    .btn-action {
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      color: var(--accent-cyan);
+      border-radius: var(--radius-sm);
+      padding: 0.18rem 0.55rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-action:hover { background: rgba(56, 189, 248, 0.22); }
+
+    .rec-box {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      padding: 0.8rem 1rem;
+      border-radius: var(--radius-md);
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+    .rec-apply-btn {
+      background: linear-gradient(135deg, #10b981, #059669);
+      border: none;
+      color: #fff;
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.55rem 1rem;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .rec-apply-btn:hover { filter: brightness(1.08); }
+
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.7rem 0.8rem;
+      background: rgba(17, 26, 43, 0.7);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      margin-bottom: 0.85rem;
+    }
+    .toggle-title { display: block; font-size: 0.82rem; font-weight: 600; }
+    .toggle-desc { display: block; font-size: 0.73rem; color: var(--text-muted); margin-top: 0.1rem; }
+    .switch { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background: #273248; border-radius: 999px; transition: 0.2s; }
+    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #f8fafc; border-radius: 50%; transition: 0.2s; }
+    .switch input:checked + .slider { background: var(--accent-cyan); }
+    .switch input:checked + .slider:before { transform: translateX(18px); }
+
+    /* Terminal Output */
+    .terminal-card {
+      background: #060911;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
+    }
+    .terminal-header {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      padding: 0.75rem 0.9rem;
+      background: #0d1320;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .terminal-top-bar { display: flex; justify-content: space-between; align-items: center; }
+    .terminal-dots { display: flex; gap: 6px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+    .terminal-title { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); font-family: var(--font-mono); }
+
+    .terminal-tabs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.4rem; width: 100%; }
+    @media (max-width: 780px) { .terminal-tabs { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 480px) { .terminal-tabs { grid-template-columns: repeat(2, 1fr); } }
+    .term-tab {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      font-size: 0.74rem;
+      font-weight: 600;
+      padding: 0.45rem 0.6rem;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      text-align: center;
+    }
+    .term-tab:hover { border-color: var(--border-accent); color: var(--text-main); }
+    .term-tab.active { background: rgba(56, 189, 248, 0.16); border-color: rgba(56, 189, 248, 0.45); color: var(--accent-cyan); }
+
+    .terminal-body {
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.6;
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 420px;
+      overflow-y: auto;
+    }
+    .terminal-footer { padding: 0.75rem 0.9rem; background: #0d1320; border-top: 1px solid var(--border-subtle); }
+    .copy-btn {
+      width: 100%;
+      padding: 0.65rem 1rem;
+      border: none;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #fff;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .copy-btn:hover { filter: brightness(1.08); }
+
+    footer {
+      margin-top: 2.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+    footer a { color: var(--text-muted); text-decoration: none; }
+    footer a:hover { color: var(--accent-cyan); }
+
+    .toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: #10b981;
+      color: #052016;
+      font-weight: 700;
+      font-size: 0.82rem;
+      padding: 0.65rem 1rem;
+      border-radius: var(--radius-md);
+      display: none;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-top">
+        <nav class="nav-pills" aria-label="Pages">
+          <a href="index.html" class="nav-link" data-i18n="nav_wizard">⚓ OpenShip Wizard</a>
+          <a href="db-stack.html" class="nav-link active" data-i18n="nav_db_stack">🗄️ MariaDB + Redis + PMA</a>
+        </nav>
+        <div class="lang-switcher" role="group" aria-label="Language selector">
+          <button type="button" class="lang-btn" id="lang-en" onclick="setLang('en')">EN</button>
+          <button type="button" class="lang-btn" id="lang-ru" onclick="setLang('ru')">RU</button>
+          <button type="button" class="lang-btn" id="lang-ua" onclick="setLang('ua')">UA</button>
+        </div>
+      </div>
+      <h1 data-i18n="hero_title">MariaDB + Redis + phpMyAdmin (FrankenPHP)</h1>
+      <p class="hero-desc" data-i18n-html="hero_desc"></p>
+    </header>
+
+    <!-- Hardware Auto-Sizing -->
+    <section class="card highlight">
+      <div class="card-header">
+        <span>🖥️</span>
+        <h2 class="card-title" data-i18n="hw_title">Server RAM Auto-Sizing</h2>
+      </div>
+      <p class="card-subtitle" style="margin-bottom: 0.75rem;" data-i18n="hw_subtitle"></p>
+
+      <div class="rec-box">
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+          <label for="hw_ram" style="font-size: 0.84rem; font-weight: 600;" data-i18n="hw_ram_label">VPS RAM:</label>
+          <select id="hw_ram" class="form-select" style="width: auto; min-width: 150px;" onchange="updateLimitsPreview()">
+            <option value="1">1 GB RAM</option>
+            <option value="2" selected>2 GB RAM</option>
+            <option value="4">4 GB RAM</option>
+            <option value="8">8+ GB RAM</option>
+          </select>
+          <span id="hw-preview" style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted);"></span>
+        </div>
+        <button type="button" class="rec-apply-btn" onclick="applyIdealLimits()" data-i18n="btn_apply_limits">✨ Apply Ideal Limits</button>
+      </div>
+    </section>
+
+    <!-- 3 Service Cards -->
+    <div class="grid-3">
+      <!-- MariaDB -->
+      <section class="card">
+        <div class="card-header">
+          <span>🐬</span>
+          <h2 class="card-title">MariaDB</h2>
+        </div>
+        <p class="card-subtitle" data-i18n="maria_subtitle"></p>
+
+        <div class="form-group">
+          <label class="form-label"><span data-i18n="version_label">Version</span><span class="env-tag">MARIADB_VERSION</span></label>
+          <input type="text" id="maria_ver" class="form-input" value="11.4" oninput="updateOutput()">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">
+            <span><span data-i18n="root_pass_label">Root Password</span> <span class="env-tag">MARIADB_ROOT_PASSWORD</span></span>
+            <button type="button" class="btn-action" onclick="genPass('maria_pass')" data-i18n="btn_gen">🎲 Gen</button>
+          </label>
+          <input type="text" id="maria_pass" class="form-input" value="StrongMariaPass2026!" oninput="updateOutput()">
+          <div class="field-help" data-i18n="maria_pass_help"></div>
+        </div>
+
+        <div class="two-col">
+          <div class="form-group">
+            <label class="form-label"><span>Buffer Pool</span><span class="env-tag">MARIADB_BUFFER_POOL_SIZE</span></label>
+            <input type="text" id="maria_pool" class="form-input" value="256M" oninput="updateOutput()">
+          </div>
+          <div class="form-group">
+            <label class="form-label"><span>Max Conn</span><span class="env-tag">MARIADB_MAX_CONNECTIONS</span></label>
+            <input type="number" id="maria_conn" class="form-input" value="30" oninput="updateOutput()">
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="form-label"><span data-i18n="mem_limit_label">Container RAM Limit</span><span class="env-tag">MARIADB_MEMORY_LIMIT</span></label>
+          <input type="text" id="maria_mem" class="form-input" value="512m" oninput="updateOutput()">
+        </div>
+      </section>
+
+      <!-- Redis -->
+      <section class="card">
+        <div class="card-header">
+          <span>⚡</span>
+          <h2 class="card-title">Redis</h2>
+        </div>
+        <p class="card-subtitle" data-i18n="redis_subtitle"></p>
+
+        <div class="form-group">
+          <label class="form-label"><span data-i18n="version_label">Version</span><span class="env-tag">REDIS_VERSION</span></label>
+          <input type="text" id="redis_ver" class="form-input" value="7.4-alpine" oninput="updateOutput()">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">
+            <span><span data-i18n="redis_pass_label">Password</span> <span class="env-tag">REDIS_PASSWORD</span></span>
+            <button type="button" class="btn-action" onclick="genPass('redis_pass')" data-i18n="btn_gen">🎲 Gen</button>
+          </label>
+          <input type="text" id="redis_pass" class="form-input" value="StrongRedisPass2026!" oninput="updateOutput()">
+          <div class="field-help" data-i18n="redis_pass_help"></div>
+        </div>
+
+        <div class="two-col">
+          <div class="form-group">
+            <label class="form-label"><span>Max Memory</span><span class="env-tag">REDIS_MAXMEMORY</span></label>
+            <input type="text" id="redis_maxmem" class="form-input" value="48mb" oninput="updateOutput()">
+          </div>
+          <div class="form-group">
+            <label class="form-label"><span>Policy</span><span class="env-tag">REDIS_MAXMEMORY_POLICY</span></label>
+            <select id="redis_policy" class="form-select" onchange="updateOutput()">
+              <option value="allkeys-lru" selected>allkeys-lru</option>
+              <option value="noeviction">noeviction</option>
+              <option value="volatile-lru">volatile-lru</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="form-label"><span data-i18n="mem_limit_label">Container RAM Limit</span><span class="env-tag">REDIS_MEMORY_LIMIT</span></label>
+          <input type="text" id="redis_mem" class="form-input" value="80m" oninput="updateOutput()">
+        </div>
+      </section>
+
+      <!-- phpMyAdmin (FrankenPHP) -->
+      <section class="card">
+        <div class="card-header">
+          <span>🌐</span>
+          <h2 class="card-title">phpMyAdmin (FrankenPHP)</h2>
+        </div>
+        <p class="card-subtitle" data-i18n="pma_subtitle"></p>
+
+        <div class="toggle-row">
+          <div>
+            <span class="toggle-title"><span data-i18n="pma_enable_label">Enable phpMyAdmin</span> <span class="env-tag">ENABLE_PHPMYADMIN</span></span>
+            <span class="toggle-desc" data-i18n="pma_enable_desc"></span>
+          </div>
+          <label class="switch"><input type="checkbox" id="enable_pma" checked onchange="updateOutput()"><span class="slider"></span></label>
+        </div>
+
+        <div id="pma-fields">
+          <div class="two-col">
+            <div class="form-group">
+              <label class="form-label"><span>PHP</span><span class="env-tag">PHP_VERSION</span></label>
+              <input type="text" id="php_ver" class="form-input" value="8.4" oninput="updateOutput()">
+            </div>
+            <div class="form-group">
+              <label class="form-label"><span>PMA</span><span class="env-tag">PHPMYADMIN_VERSION</span></label>
+              <input type="text" id="pma_ver" class="form-input" value="latest" oninput="updateOutput()">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label"><span data-i18n="pma_domain_label">HTTPS Domain</span><span class="env-tag">PHPMYADMIN_DOMAIN</span></label>
+            <input type="text" id="pma_domain" class="form-input" placeholder="pma.example.com" oninput="updateOutput()">
+            <div class="field-help" data-i18n="pma_domain_help"></div>
+          </div>
+
+          <div class="two-col">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label"><span>Upload</span><span class="env-tag">PHPMYADMIN_UPLOAD_LIMIT</span></label>
+              <input type="text" id="pma_upload" class="form-input" value="512M" oninput="updateOutput()">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label"><span>RAM Limit</span><span class="env-tag">PHPMYADMIN_MEMORY_LIMIT</span></label>
+              <input type="text" id="pma_mem" class="form-input" value="128m" oninput="updateOutput()">
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Output Terminal -->
+    <div class="terminal-card">
+      <div class="terminal-header">
+        <div class="terminal-top-bar">
+          <div class="terminal-dots">
+            <div class="dot dot-red"></div>
+            <div class="dot dot-yellow"></div>
+            <div class="dot dot-green"></div>
+          </div>
+          <span class="terminal-title" data-i18n="term_title">Generated Stack Config &amp; Commands</span>
+        </div>
+        <div class="terminal-tabs">
+          <button type="button" class="term-tab active" id="tab-env" onclick="switchTab('env')">.env file</button>
+          <button type="button" class="term-tab" id="tab-deploy" onclick="switchTab('deploy')">deploy.sh</button>
+          <button type="button" class="term-tab" id="tab-compose" onclick="switchTab('compose')">docker compose</button>
+          <button type="button" class="term-tab" id="tab-update" onclick="switchTab('update')">update (--pull)</button>
+          <button type="button" class="term-tab" id="tab-backup" onclick="switchTab('backup')">backup / SQL</button>
+        </div>
+      </div>
+
+      <div class="terminal-body" id="command-output"></div>
+
+      <div class="terminal-footer">
+        <button type="button" class="copy-btn" onclick="copyOutput()">
+          <span>📋</span>
+          <span id="copy-text" data-i18n="btn_copy">Copy</span>
+        </button>
+      </div>
+    </div>
+
+    <footer>
+      <div>OpenShip Shared Database Stack · services/mariadb-redis</div>
+      <div>
+        <a href="index.html" data-i18n="nav_wizard">⚓ OpenShip Wizard</a>
+        &nbsp;·&nbsp;
+        <a href="https://github.com/HomaEEE/OpenShip-deploy" target="_blank" rel="noopener">GitHub Repository</a>
+        &nbsp;·&nbsp;
+        <a href="javascript:void(0)" onclick="clearCache()" data-i18n="btn_reset_cache">Reset form cache</a>
+      </div>
+    </footer>
+  </div>
+
+  <div class="toast" id="toast" data-i18n="toast_copied">✔ Copied to clipboard!</div>
+
+  <script>
+    const I18N = {
+      en: {
+        page_title: 'OpenShip DB Stack — MariaDB + Redis + phpMyAdmin',
+        nav_wizard: '⚓ OpenShip Wizard',
+        nav_db_stack: '🗄️ MariaDB + Redis + PMA',
+        hero_title: 'MariaDB + Redis + phpMyAdmin (FrankenPHP)',
+        hero_desc: 'Configure and deploy the shared database stack (<code>services/mariadb-redis</code>): MariaDB 11.4, Redis 7.4, and FrankenPHP-powered phpMyAdmin with automatic updates and OpenShip Edge domain support.',
+        hw_title: 'Server RAM Auto-Sizing',
+        hw_subtitle: 'Select your VPS RAM to apply balanced InnoDB buffer pool, Redis maxmemory, and container limits.',
+        hw_ram_label: 'VPS RAM:',
+        btn_apply_limits: '✨ Apply Ideal Limits',
+        maria_subtitle: 'Internal-only MariaDB 11.4 LTS (no public port exposed).',
+        redis_subtitle: 'In-memory cache & queue service on internal Docker DNS.',
+        pma_subtitle: 'Lightweight FrankenPHP server routed via OpenShip Edge (:80).',
+        version_label: 'Version',
+        root_pass_label: 'Root Password',
+        redis_pass_label: 'Password',
+        mem_limit_label: 'Container RAM Limit',
+        maria_pass_help: 'Used for DB root access and phpMyAdmin blowfish_secret.',
+        redis_pass_help: 'Leave empty to run Redis without password (internal network only).',
+        pma_enable_label: 'Enable phpMyAdmin',
+        pma_enable_desc: 'Disable to save ~128 MB RAM on tiny VPS.',
+        pma_domain_label: 'HTTPS Domain',
+        pma_domain_help: 'Sets PMA_ABSOLUTE_URI=https://<domain>/ for OpenShip Edge reverse proxy.',
+        btn_gen: '🎲 Gen',
+        term_title: 'Generated Stack Config & Commands',
+        btn_copy: 'Copy',
+        btn_copied: 'Copied!',
+        btn_reset_cache: 'Reset form cache',
+        toast_copied: '✔ Copied to clipboard!'
+      },
+      ru: {
+        page_title: 'OpenShip DB Stack — MariaDB + Redis + phpMyAdmin',
+        nav_wizard: '⚓ Мастер OpenShip',
+        nav_db_stack: '🗄️ MariaDB + Redis + PMA',
+        hero_title: 'MariaDB + Redis + phpMyAdmin (FrankenPHP)',
+        hero_desc: 'Настройка и развёртывание общего стека БД (<code>services/mariadb-redis</code>): MariaDB 11.4, Redis 7.4 и phpMyAdmin на FrankenPHP с поддержкой обновлений до <code>latest</code> и домена через OpenShip Edge.',
+        hw_title: 'Автоподбор лимитов по RAM сервера',
+        hw_subtitle: 'Выберите объём RAM вашего VPS — мастер рассчитает оптимальный InnoDB buffer pool, Redis maxmemory и лимиты контейнеров.',
+        hw_ram_label: 'RAM сервера:',
+        btn_apply_limits: '✨ Применить идеальные лимиты',
+        maria_subtitle: 'MariaDB 11.4 LTS (только внутренняя Docker-сеть, порт закрыт снаружи).',
+        redis_subtitle: 'In-memory кэш и очереди по внутреннему DNS (redis:6379).',
+        pma_subtitle: 'Лёгкий FrankenPHP-сервер для работы через домен в OpenShip Edge (:80).',
+        version_label: 'Версия',
+        root_pass_label: 'Root-пароль',
+        redis_pass_label: 'Пароль',
+        mem_limit_label: 'Лимит RAM контейнера',
+        maria_pass_help: 'Используется для root-доступа к БД и blowfish_secret в phpMyAdmin.',
+        redis_pass_help: 'Оставьте пустым для работы без пароля во внутренней сети.',
+        pma_enable_label: 'Включить phpMyAdmin',
+        pma_enable_desc: 'Выключите для экономии ~128 MB RAM на малом VPS.',
+        pma_domain_label: 'HTTPS-домен',
+        pma_domain_help: 'Задаёт PMA_ABSOLUTE_URI=https://<domain>/ для OpenShip Edge прокси.',
+        btn_gen: '🎲 Ген',
+        term_title: 'Готовый .env и команды запуска',
+        btn_copy: 'Копировать',
+        btn_copied: 'Скопировано!',
+        btn_reset_cache: 'Сбросить кэш формы',
+        toast_copied: '✔ Скопировано в буфер обмена!'
+      },
+      ua: {
+        page_title: 'OpenShip DB Stack — MariaDB + Redis + phpMyAdmin',
+        nav_wizard: '⚓ Майстер OpenShip',
+        nav_db_stack: '🗄️ MariaDB + Redis + PMA',
+        hero_title: 'MariaDB + Redis + phpMyAdmin (FrankenPHP)',
+        hero_desc: 'Налаштування та розгортання спільного стеку БД (<code>services/mariadb-redis</code>): MariaDB 11.4, Redis 7.4 та phpMyAdmin на FrankenPHP із підтримкою оновлень до <code>latest</code> і домену через OpenShip Edge.',
+        hw_title: 'Автопідбір лімітів за RAM сервера',
+        hw_subtitle: 'Оберіть обсяг RAM вашого VPS — майстер розрахує оптимальний InnoDB buffer pool, Redis maxmemory та ліміти контейнерів.',
+        hw_ram_label: 'RAM сервера:',
+        btn_apply_limits: '✨ Застосувати ідеальні ліміти',
+        maria_subtitle: 'MariaDB 11.4 LTS (лише внутрішня Docker-мережа, порт закритий ззовні).',
+        redis_subtitle: 'In-memory кеш та черги за внутрішнім DNS (redis:6379).',
+        pma_subtitle: 'Легкий FrankenPHP-сервер для роботи через домен в OpenShip Edge (:80).',
+        version_label: 'Версія',
+        root_pass_label: 'Root-пароль',
+        redis_pass_label: 'Пароль',
+        mem_limit_label: 'Ліміт RAM контейнера',
+        maria_pass_help: 'Використовується для root-доступу до БД та blowfish_secret у phpMyAdmin.',
+        redis_pass_help: 'Залиште порожнім для роботи без пароля у внутрішній мережі.',
+        pma_enable_label: 'Увімкнути phpMyAdmin',
+        pma_enable_desc: 'Вимкніть для економії ~128 MB RAM на малому VPS.',
+        pma_domain_label: 'HTTPS-домен',
+        pma_domain_help: 'Задає PMA_ABSOLUTE_URI=https://<domain>/ для OpenShip Edge проксі.',
+        btn_gen: '🎲 Ген',
+        term_title: 'Готовий .env та команди запуску',
+        btn_copy: 'Копіювати',
+        btn_copied: 'Скопійовано!',
+        btn_reset_cache: 'Скинути кеш форми',
+        toast_copied: '✔ Скопійовано в буфер обміну!'
+      }
+    };
+
+    let currentLang = 'en';
+    let activeTab = 'env';
+
+    function t(key) {
+      return (I18N[currentLang] && I18N[currentLang][key]) || I18N.en[key] || key;
+    }
+
+    function setLang(lang, skipSave) {
+      if (!I18N[lang]) lang = 'en';
+      currentLang = lang;
+      document.documentElement.lang = (lang === 'ua') ? 'uk' : lang;
+      document.title = t('page_title');
+      ['en', 'ru', 'ua'].forEach(l => document.getElementById('lang-' + l).classList.toggle('active', l === lang));
+      document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.getAttribute('data-i18n')); });
+      document.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.getAttribute('data-i18n-html')); });
+      if (!skipSave) {
+        try { localStorage.setItem('openship_lang', lang); } catch (e) {}
+      }
+      updateOutput();
+    }
+
+    function detectInitialLang() {
+      try {
+        const qp = new URLSearchParams(window.location.search).get('lang');
+        if (qp && I18N[qp]) return qp;
+        const saved = localStorage.getItem('openship_lang');
+        if (saved && I18N[saved]) return saved;
+        const nav = (navigator.language || 'en').toLowerCase();
+        if (nav.startsWith('uk')) return 'ua';
+        if (nav.startsWith('ru')) return 'ru';
+      } catch (e) {}
+      return 'en';
+    }
+
+    function computeLimits(ramGb) {
+      if (ramGb <= 1) {
+        return { pool: '128M', conn: 30, mariaMem: '384m', redisMax: '32mb', redisMem: '64m', pmaMem: '128m' };
+      } else if (ramGb <= 2) {
+        return { pool: '256M', conn: 50, mariaMem: '512m', redisMax: '48mb', redisMem: '80m', pmaMem: '128m' };
+      } else if (ramGb <= 4) {
+        return { pool: '512M', conn: 100, mariaMem: '1024m', redisMax: '128mb', redisMem: '192m', pmaMem: '256m' };
+      }
+      return { pool: '1G', conn: 150, mariaMem: '2048m', redisMax: '256mb', redisMem: '384m', pmaMem: '256m' };
+    }
+
+    function updateLimitsPreview() {
+      const ram = parseInt(document.getElementById('hw_ram').value, 10);
+      const l = computeLimits(ram);
+      document.getElementById('hw-preview').textContent =
+        `pool=${l.pool}, conn=${l.conn}, maria=${l.mariaMem} | redis=${l.redisMax} (${l.redisMem}) | pma=${l.pmaMem}`;
+    }
+
+    function applyIdealLimits() {
+      const ram = parseInt(document.getElementById('hw_ram').value, 10);
+      const l = computeLimits(ram);
+      document.getElementById('maria_pool').value = l.pool;
+      document.getElementById('maria_conn').value = l.conn;
+      document.getElementById('maria_mem').value = l.mariaMem;
+      document.getElementById('redis_maxmem').value = l.redisMax;
+      document.getElementById('redis_mem').value = l.redisMem;
+      document.getElementById('pma_mem').value = l.pmaMem;
+      updateOutput();
+    }
+
+    function genPass(id) {
+      const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#%^&*";
+      let out = "";
+      for (let i = 0; i < 20; i++) out += chars.charAt(Math.floor(Math.random() * chars.length));
+      document.getElementById(id).value = out;
+      updateOutput();
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll('.term-tab').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      updateOutput();
+    }
+
+    function buildEnvText() {
+      const enablePma = document.getElementById('enable_pma').checked;
+      return [
+        `MARIADB_VERSION=${document.getElementById('maria_ver').value.trim() || '11.4'}`,
+        `DB_ROOT_PASSWORD=${document.getElementById('maria_pass').value.trim()}`,
+        `MARIADB_ROOT_PASSWORD=\${DB_ROOT_PASSWORD}`,
+        `MARIADB_BUFFER_POOL_SIZE=${document.getElementById('maria_pool').value.trim() || '256M'}`,
+        `MARIADB_MAX_CONNECTIONS=${document.getElementById('maria_conn').value.trim() || '30'}`,
+        `MARIADB_MEMORY_LIMIT=${document.getElementById('maria_mem').value.trim() || '512m'}`,
+        ``,
+        `REDIS_VERSION=${document.getElementById('redis_ver').value.trim() || '7.4-alpine'}`,
+        `REDIS_PASSWORD=${document.getElementById('redis_pass').value.trim()}`,
+        `REDIS_MAXMEMORY=${document.getElementById('redis_maxmem').value.trim() || '48mb'}`,
+        `REDIS_MAXMEMORY_POLICY=${document.getElementById('redis_policy').value}`,
+        `REDIS_MEMORY_LIMIT=${document.getElementById('redis_mem').value.trim() || '80m'}`,
+        ``,
+        `PHP_VERSION=${document.getElementById('php_ver').value.trim() || '8.4'}`,
+        `ENABLE_PHPMYADMIN=${enablePma ? 'true' : 'false'}`,
+        `PHPMYADMIN_DOMAIN=${document.getElementById('pma_domain').value.trim()}`,
+        `PHPMYADMIN_VERSION=${document.getElementById('pma_ver').value.trim() || 'latest'}`,
+        `PHPMYADMIN_HOST=mariadb`,
+        `PHPMYADMIN_UPLOAD_LIMIT=${document.getElementById('pma_upload').value.trim() || '512M'}`,
+        `PHPMYADMIN_MEMORY_LIMIT=${document.getElementById('pma_mem').value.trim() || '128m'}`
+      ].join('\n');
+    }
+
+    function updateOutput() {
+      const enablePma = document.getElementById('enable_pma').checked;
+      document.getElementById('pma-fields').style.opacity = enablePma ? '1' : '0.45';
+      const envText = buildEnvText();
+      const pmaFlag = enablePma ? '--with-pma' : '--without-pma';
+
+      let out = '';
+      if (activeTab === 'env') {
+        out = envText;
+      } else if (activeTab === 'deploy') {
+        out = `cat > services/mariadb-redis/.env <<'EOF'\n${envText}\nEOF\n\nsudo ./services/mariadb-redis/deploy.sh ${pmaFlag}`;
+      } else if (activeTab === 'compose') {
+        const target = enablePma ? '' : ' mariadb redis';
+        out = `docker compose -f services/mariadb-redis/docker-compose.yml --env-file services/mariadb-redis/.env up -d${target}`;
+      } else if (activeTab === 'update') {
+        out = `# Pull updated MariaDB, Redis & FrankenPHP images + refresh phpMyAdmin\nsudo ./services/mariadb-redis/deploy.sh --pull`;
+      } else {
+        out = `# Backup all MariaDB databases + Redis RDB\nsudo ./services/mariadb-redis/backup.sh\n\n# Create a project DB & user\ndocker exec mariadb mariadb -u root -p"${document.getElementById('maria_pass').value.trim()}" -e "\nCREATE DATABASE IF NOT EXISTS app_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\nCREATE USER IF NOT EXISTS 'app_user'@'%' IDENTIFIED BY 'strong_pass';\nGRANT ALL PRIVILEGES ON app_db.* TO 'app_user'@'%';\nFLUSH PRIVILEGES;"`;
+      }
+
+      document.getElementById('command-output').textContent = out;
+      saveCache();
+    }
+
+    function copyOutput() {
+      navigator.clipboard.writeText(document.getElementById('command-output').textContent).then(() => {
+        const toast = document.getElementById('toast');
+        toast.style.display = 'block';
+        setTimeout(() => { toast.style.display = 'none'; }, 2200);
+        const btn = document.getElementById('copy-text');
+        btn.textContent = t('btn_copied');
+        setTimeout(() => { btn.textContent = t('btn_copy'); }, 1800);
+      });
+    }
+
+    const DB_CACHE_KEY = 'openship_db_stack_cache_v1';
+    function saveCache() {
+      try {
+        const ids = ['hw_ram','maria_ver','maria_pass','maria_pool','maria_conn','maria_mem','redis_ver','redis_pass','redis_maxmem','redis_policy','redis_mem','php_ver','pma_ver','pma_domain','pma_upload','pma_mem'];
+        const data = { activeTab, enable_pma: document.getElementById('enable_pma').checked };
+        ids.forEach(id => { data[id] = document.getElementById(id).value; });
+        localStorage.setItem(DB_CACHE_KEY, JSON.stringify(data));
+      } catch (e) {}
+    }
+
+    function loadCache() {
+      try {
+        const raw = localStorage.getItem(DB_CACHE_KEY);
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        Object.keys(data).forEach(k => {
+          if (k === 'activeTab') {
+            activeTab = data.activeTab;
+            document.querySelectorAll('.term-tab').forEach(b => b.classList.remove('active'));
+            const el = document.getElementById('tab-' + activeTab);
+            if (el) el.classList.add('active');
+          } else if (k === 'enable_pma') {
+            document.getElementById('enable_pma').checked = !!data.enable_pma;
+          } else {
+            const el = document.getElementById(k);
+            if (el && data[k] !== undefined) el.value = data[k];
+          }
+        });
+      } catch (e) {}
+    }
+
+    function clearCache() {
+      localStorage.removeItem(DB_CACHE_KEY);
+      location.reload();
+    }
+
+    loadCache();
+    updateLimitsPreview();
+    setLang(detectInitialLang(), true);
+  </script>
+</body>
+</html>

@@ -621,7 +621,10 @@
   <div class="container">
     <header>
       <div class="header-top">
-        <div class="badge-bar">Ubuntu 24.04 LTS · Single-Script Provisioning</div>
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <div class="badge-bar">Ubuntu 24.04 LTS · Single-Script Provisioning</div>
+          <a href="db-stack.html" style="text-decoration:none; font-size:0.75rem; font-weight:600; padding:0.3rem 0.8rem; border-radius:9999px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#34d399;" data-i18n="nav_db_stack">🗄️ MariaDB + Redis + PMA</a>
+        </div>
         <div class="lang-switcher" role="group" aria-label="Language selector">
           <button type="button" class="lang-btn" id="lang-en" onclick="setLang('en')">EN</button>
           <button type="button" class="lang-btn" id="lang-ru" onclick="setLang('ru')">RU</button>
@@ -1121,6 +1124,8 @@
     <footer>
       <div>OpenShip Deploy Toolkit · Ubuntu 24.04 LTS</div>
       <div>
+        <a href="db-stack.html" data-i18n="nav_db_stack">🗄️ MariaDB + Redis + PMA</a>
+        &nbsp;·&nbsp;
         <a href="https://github.com/HomaEEE/OpenShip-deploy" target="_blank" rel="noopener">GitHub Repository</a>
         &nbsp;·&nbsp;
         <a href="https://openship.io" target="_blank" rel="noopener">OpenShip.io</a>
@@ -1231,6 +1236,7 @@
         ref_col3_list: '<li><code>PermitRootLogin</code>, <code>PasswordAuthentication</code>, SSH port</li><li>UFW/nftables &amp; exposed DB ports (<code>3306/5432/6379/27017</code>)</li><li>Fail2ban <code>sshd</code> jail &amp; port alignment with <code>sshd -T</code></li><li>Failed logins (24h) &amp; pending <code>apt</code> security updates</li><li><code>UID 0</code> accounts, sudo logging, password policy, SUID</li><li><code>--report /path/report.txt</code> — export report</li>',
         btn_reset_cache: 'Reset form cache',
         toast_copied: '✔ Copied to clipboard!',
+        nav_db_stack: '🗄️ MariaDB + Redis + PMA',
         chip_mode: 'Mode',
         chip_docker: 'Docker',
         chip_stack: 'Stack',
@@ -1357,6 +1363,7 @@
         ref_col3_list: '<li><code>PermitRootLogin</code>, <code>PasswordAuthentication</code>, порт SSH</li><li>UFW/nftables и открытые порты БД (<code>3306/5432/6379/27017</code>)</li><li>Fail2ban <code>sshd</code> jail и совпадение порта с <code>sshd -T</code></li><li>Неудачные входы за 24ч и security-обновления <code>apt</code></li><li>Аккаунты с <code>UID 0</code>, sudo-логирование, политика паролей, SUID</li><li><code>--report /path/report.txt</code> — экспорт отчёта</li>',
         btn_reset_cache: 'Сбросить кэш формы',
         toast_copied: '✔ Скопировано в буфер обмена!',
+        nav_db_stack: '🗄️ MariaDB + Redis + PMA',
         chip_mode: 'Режим',
         chip_docker: 'Docker',
         chip_stack: 'Стек',
@@ -1483,6 +1490,7 @@
         ref_col3_list: '<li><code>PermitRootLogin</code>, <code>PasswordAuthentication</code>, порт SSH</li><li>UFW/nftables та відкриті порти БД (<code>3306/5432/6379/27017</code>)</li><li>Fail2ban <code>sshd</code> jail та збіг порту з <code>sshd -T</code></li><li>Невдалі входи за 24г та security-оновлення <code>apt</code></li><li>Акаунти з <code>UID 0</code>, sudo-логування, політика паролів, SUID</li><li><code>--report /path/report.txt</code> — експорт звіту</li>',
         btn_reset_cache: 'Скинути кеш форми',
         toast_copied: '✔ Скопійовано в буфер обміну!',
+        nav_db_stack: '🗄️ MariaDB + Redis + PMA',
         chip_mode: 'Режим',
         chip_docker: 'Docker',
         chip_stack: 'Стек',
