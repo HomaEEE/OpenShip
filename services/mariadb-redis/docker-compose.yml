@@ -18,8 +18,21 @@ services:
       - --thread-cache-size=16
       - --wait-timeout=600
       - --interactive-timeout=600
+    entrypoint:
+      - sh
+      - -c
+      - |
+        if [ -z "$${MARIADB_ROOT_PASSWORD}" ] && [ -n "$${DB_ROOT_PASSWORD}" ]; then
+          export MARIADB_ROOT_PASSWORD="$${DB_ROOT_PASSWORD}"
+        fi
+        if [ -z "$${MARIADB_ROOT_PASSWORD}" ]; then
+          export MARIADB_RANDOM_ROOT_PASSWORD=1
+        fi
+        exec docker-entrypoint.sh "$$@"
+      - --
     environment:
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD}}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-}
       MARIADB_AUTO_UPGRADE: "1"
     volumes:
       - mariadb_data:/var/lib/mysql
@@ -72,7 +85,7 @@ services:
       PMA_VERSION: ${PHPMYADMIN_VERSION:-latest}
       UPLOAD_LIMIT: ${PHPMYADMIN_UPLOAD_LIMIT:-512M}
       MEMORY_LIMIT: ${PHPMYADMIN_MEMORY_LIMIT:-128M}
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD:-}}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-}
       PMA_ABSOLUTE_URI: ${PHPMYADMIN_DOMAIN:+https://${PHPMYADMIN_DOMAIN}/}
     ports:
       - "80"
