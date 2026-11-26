@@ -507,6 +507,14 @@
         </div>
       </div>
 
+      <div id="laravel-options-bar" style="display:none; padding: 0.6rem 0.9rem; background: #0a101c; border-bottom: 1px solid var(--border-subtle); align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;">
+        <span style="font-size: 0.78rem; color: var(--text-muted);" data-i18n="laravel_redis_hint">Use Redis for cache, sessions &amp; queues (or disable for file/sync like skargroup).</span>
+        <label style="display:inline-flex; align-items:center; gap:0.5rem; font-size:0.78rem; font-weight:600; cursor:pointer;">
+          <input type="checkbox" id="laravel_use_redis" checked onchange="updateOutput()">
+          <span data-i18n="laravel_use_redis_label">Use Redis in Laravel</span>
+        </label>
+      </div>
+
       <div class="terminal-body" id="command-output"></div>
 
       <div class="terminal-footer">
@@ -564,7 +572,9 @@
         btn_copy: 'Copy',
         btn_copied: 'Copied!',
         btn_reset_cache: 'Reset form cache',
-        toast_copied: '✔ Copied to clipboard!'
+        toast_copied: '✔ Copied to clipboard!',
+        laravel_redis_hint: 'Use Redis for cache, sessions & queues (or uncheck for file/sync).',
+        laravel_use_redis_label: 'Use Redis in Laravel'
       },
       ru: {
         page_title: 'OpenShip DB Stack — MariaDB + Redis + phpMyAdmin',
@@ -595,7 +605,9 @@
         btn_copy: 'Копировать',
         btn_copied: 'Скопировано!',
         btn_reset_cache: 'Сбросить кэш формы',
-        toast_copied: '✔ Скопировано в буфер обмена!'
+        toast_copied: '✔ Скопировано в буфер обмена!',
+        laravel_redis_hint: 'Использовать Redis для кэша, сессий и очередей (иначе file/sync).',
+        laravel_use_redis_label: 'Использовать Redis в Laravel'
       },
       ua: {
         page_title: 'OpenShip DB Stack — MariaDB + Redis + phpMyAdmin',
@@ -626,7 +638,9 @@
         btn_copy: 'Копіювати',
         btn_copied: 'Скопійовано!',
         btn_reset_cache: 'Скинути кеш форми',
-        toast_copied: '✔ Скопійовано в буфер обміну!'
+        toast_copied: '✔ Скопійовано в буфер обміну!',
+        laravel_redis_hint: 'Використовувати Redis для кешу, сесій та черг (інакше file/sync).',
+        laravel_use_redis_label: 'Використовувати Redis у Laravel'
       }
     };
 
@@ -738,6 +752,7 @@
     function updateOutput() {
       const enablePma = document.getElementById('enable_pma').checked;
       document.getElementById('pma-fields').style.opacity = enablePma ? '1' : '0.45';
+      document.getElementById('laravel-options-bar').style.display = (activeTab === 'laravel') ? 'flex' : 'none';
       const envText = buildEnvText();
       const pmaFlag = enablePma ? '--with-pma' : '--without-pma';
 
@@ -752,30 +767,51 @@
       } else if (activeTab === 'update') {
         out = `# Pull updated MariaDB, Redis & FrankenPHP images + refresh phpMyAdmin\nsudo ./services/mariadb-redis/deploy.sh --pull`;
       } else if (activeTab === 'laravel') {
-        const redisPass = document.getElementById('redis_pass').value.trim();
-        const rootPass = document.getElementById('maria_pass').value.trim();
+        const useRedis = document.getElementById('laravel_use_redis').checked;
+        const envObj = {
+          "APP_NAME": "My Laravel App",
+          "APP_ENV": "production",
+          "APP_DEBUG": "false",
+          "APP_URL": "https://app.example.com",
+          "APP_KEY": { "value": "", "secret": true },
+          "DB_CONNECTION": "mysql",
+          "DB_HOST": "mariadb",
+          "DB_PORT": "3306",
+          "DB_DATABASE": "my_app_db",
+          "DB_USERNAME": "my_app_user",
+          "DB_PASSWORD": { "value": "", "secret": true }
+        };
+        if (useRedis) {
+          envObj["REDIS_CLIENT"] = "phpredis";
+          envObj["REDIS_HOST"] = "redis";
+          envObj["REDIS_PORT"] = "6379";
+          envObj["REDIS_PREFIX"] = "my_app_";
+          envObj["CACHE_STORE"] = "redis";
+          envObj["SESSION_DRIVER"] = "redis";
+          envObj["QUEUE_CONNECTION"] = "redis";
+        } else {
+          envObj["CACHE_STORE"] = "file";
+          envObj["SESSION_DRIVER"] = "file";
+          envObj["QUEUE_CONNECTION"] = "sync";
+        }
+        envObj["FILESYSTEM_DISK"] = "local";
+        envObj["SERVER_NAME"] = "http://:80";
+
         const laravelCfg = {
           "$schema": "https://openship.io/openship.schema.json",
           "framework": "laravel",
-          "env": {
-            "DB_CONNECTION": "mysql",
-            "DB_HOST": "mariadb",
-            "DB_PORT": "3306",
-            "DB_DATABASE": "my_app_db",
-            "DB_USERNAME": "my_app_user",
-            "DB_PASSWORD": { "value": "", "secret": true },
-            "DB_ROOT_PASSWORD": { "value": rootPass, "secret": true },
-            "REDIS_CLIENT": "phpredis",
-            "REDIS_HOST": "redis",
-            "REDIS_PORT": "6379",
-            "REDIS_PASSWORD": { "value": redisPass, "secret": true },
-            "REDIS_PREFIX": "my_app_",
-            "CACHE_STORE": "redis",
-            "SESSION_DRIVER": "redis",
-            "QUEUE_CONNECTION": "redis"
-          },
+          "runtimeVersion": "8.4",
+          "installCommand": "composer install --no-dev --optimize-autoloader",
+          "buildCommand": "npm i --force && npm run build",
+          "startCommand": "mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache && exec frankenphp run --config /etc/frankenphp/Caddyfile --adapter caddyfile",
+          "optimize": true,
+          "port": 80,
+          "domains": ["app.example.com"],
+          "volumes": ["laravel_storage:/app/storage"],
+          "productionPaths": ["app", "bootstrap", "config", "database", "public", "resources", "routes", "storage", "vendor", "artisan", "composer.json", "composer.lock"],
+          "env": envObj,
           "releaseCommands": [
-            "php -r '$r=getenv(\"DB_ROOT_PASSWORD\");$d=getenv(\"DB_DATABASE\");$u=getenv(\"DB_USERNAME\");$p=getenv(\"DB_PASSWORD\");$h=getenv(\"DB_HOST\")?:\"mariadb\";$port=getenv(\"DB_PORT\")?:\"3306\";if(!$r||!$d||!$u||!$p){fwrite(STDERR,\"Skip DB auto-provision: missing DB_ROOT_PASSWORD or DB_* env\\n\");exit(0);}if(!preg_match(\"/^[A-Za-z0-9_]+$/\",$d)||!preg_match(\"/^[A-Za-z0-9_]+$/\",$u)){fwrite(STDERR,\"Invalid DB_DATABASE or DB_USERNAME\\n\");exit(1);}$pdo=new PDO(\"mysql:host=$h;port=$port;charset=utf8mb4\",\"root\",$r,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$pdo->exec(\"CREATE DATABASE IF NOT EXISTS `$d` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\");$s=$pdo->prepare(\"CREATE USER IF NOT EXISTS ?@\\\"%\\\" IDENTIFIED BY ?\");$s->execute([$u,$p]);$s=$pdo->prepare(\"ALTER USER ?@\\\"%\\\" IDENTIFIED BY ?\");$s->execute([$u,$p]);$pdo->exec(\"GRANT ALL PRIVILEGES ON `$d`.* TO \\\"$u\\\"@\\\"%\\\"\");$pdo->exec(\"FLUSH PRIVILEGES\");echo \"DB & user ready: $d ($u)\\n\";'",
+            "php -r '$k=getenv(\"APP_KEY\");$p=getenv(\"DB_PASSWORD\");if(!$k||!$p){fwrite(STDERR,\"Missing required APP_KEY or DB_PASSWORD\\n\");exit(1);}$r=getenv(\"DB_ROOT_PASSWORD\");$d=getenv(\"DB_DATABASE\");$u=getenv(\"DB_USERNAME\");$h=getenv(\"DB_HOST\")?:\"mariadb\";$port=getenv(\"DB_PORT\")?:\"3306\";if(!$r||!$d||!$u){fwrite(STDERR,\"Skip DB auto-provision: link DB service to inject DB_ROOT_PASSWORD\\n\");exit(0);}if(!preg_match(\"/^[A-Za-z0-9_]+$/\",$d)||!preg_match(\"/^[A-Za-z0-9_]+$/\",$u)){fwrite(STDERR,\"Invalid DB_DATABASE or DB_USERNAME\\n\");exit(1);}$pdo=new PDO(\"mysql:host=$h;port=$port;charset=utf8mb4\",\"root\",$r,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);$pdo->exec(\"CREATE DATABASE IF NOT EXISTS `$d` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\");$s=$pdo->prepare(\"CREATE USER IF NOT EXISTS ?@\\\"%\\\" IDENTIFIED BY ?\");$s->execute([$u,$p]);$s=$pdo->prepare(\"ALTER USER ?@\\\"%\\\" IDENTIFIED BY ?\");$s->execute([$u,$p]);$pdo->exec(\"GRANT ALL PRIVILEGES ON `$d`.* TO \\\"$u\\\"@\\\"%\\\"\");$pdo->exec(\"FLUSH PRIVILEGES\");echo \"DB & user ready: $d ($u)\\n\";'",
             "php artisan migrate --force",
             "php artisan optimize"
           ]
