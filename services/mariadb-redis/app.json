@@ -159,6 +159,22 @@
         "width": "half"
       },
       {
+        "id": "dbHost",
+        "label": "Database host",
+        "source": "template:mariadb",
+        "service": "mariadb",
+        "envKey": "DB_HOST",
+        "width": "half"
+      },
+      {
+        "id": "dbPort",
+        "label": "Database port",
+        "source": "template:3306",
+        "service": "mariadb",
+        "envKey": "DB_PORT",
+        "width": "half"
+      },
+      {
         "id": "url",
         "label": "Database URL",
         "source": "template:mysql://openship:{{env:mariadb:MARIADB_PASSWORD}}@mariadb:3306/app",
@@ -184,6 +200,14 @@
         "width": "half"
       },
       {
+        "id": "redisPort",
+        "label": "Redis port",
+        "source": "template:6379",
+        "service": "redis",
+        "envKey": "REDIS_PORT",
+        "width": "half"
+      },
+      {
         "id": "redisPassword",
         "label": "Redis password",
         "source": "env:redis:REDIS_PASSWORD",
@@ -203,7 +227,7 @@
     ],
     "guide": {
       "defaultMode": "internal",
-      "useHint": "Link this app to any project in OpenShip, or read DATABASE_URL and REDIS_URL from your app environment."
+      "useHint": "Link this app to any project in OpenShip (Use in a project) so DB_HOST=mariadb and REDIS_HOST=redis resolve by hostname alias without IPs."
     },
     "firstLogin": {
       "note": "Generated credentials initialize an empty installation. Account changes made in the app are preserved on redeployment."
@@ -241,12 +265,12 @@
     {
       "id": "mysql",
       "category": "database",
-      "outputRefs": ["url", "rootPassword"]
+      "outputRefs": ["url", "dbHost", "dbPort", "rootPassword"]
     },
     {
       "id": "redis",
       "category": "database",
-      "outputRefs": ["redisUrl", "redisHost", "redisPassword"]
+      "outputRefs": ["redisUrl", "redisHost", "redisPort", "redisPassword"]
     }
   ],
   "minResources": {

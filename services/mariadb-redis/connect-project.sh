@@ -10,7 +10,10 @@ if [[ -z "$CONTAINER" ]]; then
 fi
 
 if [[ -z "$NET" ]]; then
-    NET="$(docker inspect openship-mariadb-mariadb --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null | head -n1 || true)"
+    DB_CONTAINER="$(docker ps --filter "name=mariadb" --format '{{.Names}}' 2>/dev/null | grep -E '(-|^)mariadb$' | head -n1 || true)"
+    if [[ -n "$DB_CONTAINER" ]]; then
+        NET="$(docker inspect "$DB_CONTAINER" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' 2>/dev/null | head -n1 || true)"
+    fi
     [[ -z "$NET" ]] && NET="openship-mariadb"
 fi
 
