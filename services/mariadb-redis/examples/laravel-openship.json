@@ -2,19 +2,22 @@
   "$schema": "https://openship.io/openship.schema.json",
   "framework": "laravel",
   "runtimeVersion": "8.4",
+  "buildImage": "ghcr.io/homaeee/frankenphp-base:latest",
+  "runtimeImage": "ghcr.io/homaeee/frankenphp-base:latest",
   "autoDeployPaths": {
     "exclude": [
       "tests/**",
       "docs/**",
+      "docker/**",
+      ".github/**",
       "*.md",
       ".gitignore",
       "phpunit.xml"
     ]
   },
-  "startCommand": "mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache && (php -r '$h=getenv(\"DB_HOST\")?:\"mariadb\";$p=(int)(getenv(\"DB_PORT\")?:3306);$d=getenv(\"DB_DATABASE\")?:\"\";$u=getenv(\"DB_USERNAME\")?:\"\";$pw=getenv(\"DB_PASSWORD\")?:\"\";$rp=getenv(\"DB_ROOT_PASSWORD\")?:getenv(\"MARIADB_ROOT_PASSWORD\")?:getenv(\"MYSQL_ROOT_PASSWORD\")?:\"\";if(!$d||!$u||!($s=@fsockopen($h,$p,$e,$t,2)))exit(1);fclose($s);$o=[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_TIMEOUT=>5];try{new PDO(\"mysql:host=$h;port=$p;dbname=$d;charset=utf8mb4\",$u,$pw,$o);exit(0);}catch(Throwable){}if(!$rp||!$pw||!preg_match(\"/^\\w+$/\",$d)||!preg_match(\"/^\\w+$/\",$u))exit(1);$r=new PDO(\"mysql:host=$h;port=$p;charset=utf8mb4\",\"root\",$rp,$o);$qu=$r->quote($u);$qa=$r->quote(\"%\");$q=$r->quote($pw);$r->exec(\"CREATE DATABASE IF NOT EXISTS `$d` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\");$r->exec(\"CREATE USER IF NOT EXISTS $qu@$qa IDENTIFIED BY $q\");$r->exec(\"ALTER USER $qu@$qa IDENTIFIED BY $q\");$r->exec(\"GRANT ALL PRIVILEGES ON `$d`.* TO $qu@$qa\");$r->exec(\"FLUSH PRIVILEGES\");' && php artisan migrate --force || echo \"[boot] DB not ready, skipping migrations\") && exec frankenphp run --config /etc/frankenphp/Caddyfile --adapter caddyfile",
+  "startCommand": "mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache && (php -r '$h=getenv(\"DB_HOST\")?:\"mariadb\";$p=(int)(getenv(\"DB_PORT\")?:3306);$d=getenv(\"DB_DATABASE\")?:\"\";$u=getenv(\"DB_USERNAME\")?:\"\";$pw=getenv(\"DB_PASSWORD\")?:\"\";$rp=getenv(\"DB_ROOT_PASSWORD\")?:getenv(\"MARIADB_ROOT_PASSWORD\")?:getenv(\"MYSQL_ROOT_PASSWORD\")?:\"\";if(!$d||!$u||!($s=@fsockopen($h,$p,$e,$t,2)))exit(1);fclose($s);$o=[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_TIMEOUT=>5];try{new PDO(\"mysql:host=$h;port=$p;dbname=$d;charset=utf8mb4\",$u,$pw,$o);exit(0);}catch(Throwable){}if(!$rp||!$pw||!preg_match(\"/^\\w+$/\",$d)||!preg_match(\"/^\\w+$/\",$u))exit(1);$r=new PDO(\"mysql:host=$h;port=$p;charset=utf8mb4\",\"root\",$rp,$o);$qu=$r->quote($u);$qa=$r->quote(\"%\");$q=$r->quote($pw);$r->exec(\"CREATE DATABASE IF NOT EXISTS `$d` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\");$r->exec(\"CREATE USER IF NOT EXISTS $qu@$qa IDENTIFIED BY $q\");$r->exec(\"ALTER USER $qu@$qa IDENTIFIED BY $q\");$r->exec(\"GRANT ALL PRIVILEGES ON `$d`.* TO $qu@$qa\");$r->exec(\"FLUSH PRIVILEGES\");' && php artisan migrate --force || echo \"[boot] DB not ready, skipping migrations\") && (php artisan optimize || true) && exec frankenphp run --config /etc/frankenphp/Caddyfile --adapter caddyfile",
   "installCommand": "composer install --no-dev --optimize-autoloader --classmap-authoritative --prefer-dist --no-interaction && rm -rf /root/.composer/cache",
-  "buildCommand": "(npm ci --no-audit --no-fund || npm i --force --no-audit --no-fund) && npm run build && rm -rf node_modules /root/.npm",
-  "optimize": true,
+  "buildCommand": "[ -f package.json ] && (npm ci --no-audit --no-fund || npm i --force --no-audit --no-fund) && npm run build && rm -rf node_modules /root/.npm || true",
   "port": 80,
   "domains": [
     "app.example.com"

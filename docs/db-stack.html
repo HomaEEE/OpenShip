@@ -525,6 +525,10 @@
             <label class="form-label" style="margin-bottom:0.25rem; font-size:0.74rem;"><span data-i18n="laravel_db_user_label">DB User</span></label>
             <input type="text" id="laravel_db_user" class="form-input" value="my_app_user" oninput="updateOutput()">
           </div>
+          <div>
+            <label class="form-label" style="margin-bottom:0.25rem; font-size:0.74rem;"><span data-i18n="laravel_base_image_label">Base Image (optional)</span></label>
+            <input type="text" id="laravel_base_image" class="form-input" value="ghcr.io/homaeee/frankenphp-base:latest" placeholder="default" oninput="updateOutput()">
+          </div>
         </div>
         <div style="display:flex; align-items:center; justify-content:space-between; gap:0.75rem; flex-wrap:wrap; width:100%;">
           <span style="font-size: 0.78rem; color: var(--text-muted);" data-i18n="laravel_redis_hint">Use Redis for cache &amp; sessions (queue stays sync; uncheck for file).</span>
@@ -597,6 +601,7 @@
         laravel_domain_label: 'Domain',
         laravel_db_name_label: 'DB Name',
         laravel_db_user_label: 'DB User',
+        laravel_base_image_label: 'Base Image (optional)',
         laravel_redis_hint: 'Use Redis for cache & sessions (queue stays sync; uncheck for file).',
         laravel_use_redis_label: 'Use Redis in Laravel'
       },
@@ -634,6 +639,7 @@
         laravel_domain_label: 'Домен',
         laravel_db_name_label: 'Имя БД',
         laravel_db_user_label: 'Юзер БД',
+        laravel_base_image_label: 'Базовый образ (опц.)',
         laravel_redis_hint: 'Использовать Redis для кэша и сессий (очередь sync; иначе file).',
         laravel_use_redis_label: 'Использовать Redis в Laravel'
       },
@@ -671,6 +677,7 @@
         laravel_domain_label: 'Домен',
         laravel_db_name_label: 'Ім\'я БД',
         laravel_db_user_label: 'Користувач БД',
+        laravel_base_image_label: 'Базовий образ (опц.)',
         laravel_redis_hint: 'Використовувати Redis для кешу та сесій (черга sync; інакше file).',
         laravel_use_redis_label: 'Використовувати Redis у Laravel'
       }
@@ -805,6 +812,7 @@
         const dbName = (document.getElementById('laravel_db_name').value || '').trim() || 'my_app_db';
         const dbUser = (document.getElementById('laravel_db_user').value || '').trim() || 'my_app_user';
         const useRedis = document.getElementById('laravel_use_redis').checked;
+        const baseImage = (document.getElementById('laravel_base_image').value || '').trim();
         const envObj = {
           "APP_NAME": appName,
           "APP_ENV": "production",
@@ -838,20 +846,23 @@
         const laravelCfg = {
           "$schema": "https://openship.io/openship.schema.json",
           "framework": "laravel",
-          "runtimeVersion": "8.4",
-          "autoDeployPaths": {
-            "exclude": ["tests/**", "docs/**", "*.md", ".gitignore", "phpunit.xml"]
-          },
-          "startCommand": "mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache && (php -r '$h=getenv(\"DB_HOST\")?:\"mariadb\";$p=(int)(getenv(\"DB_PORT\")?:3306);$d=getenv(\"DB_DATABASE\")?:\"\";$u=getenv(\"DB_USERNAME\")?:\"\";$pw=getenv(\"DB_PASSWORD\")?:\"\";$rp=getenv(\"DB_ROOT_PASSWORD\")?:getenv(\"MARIADB_ROOT_PASSWORD\")?:getenv(\"MYSQL_ROOT_PASSWORD\")?:\"\";if(!$d||!$u||!($s=@fsockopen($h,$p,$e,$t,2)))exit(1);fclose($s);$o=[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_TIMEOUT=>5];try{new PDO(\"mysql:host=$h;port=$p;dbname=$d;charset=utf8mb4\",$u,$pw,$o);exit(0);}catch(Throwable){}if(!$rp||!$pw||!preg_match(\"/^\\w+$/\",$d)||!preg_match(\"/^\\w+$/\",$u))exit(1);$r=new PDO(\"mysql:host=$h;port=$p;charset=utf8mb4\",\"root\",$rp,$o);$qu=$r->quote($u);$qa=$r->quote(\"%\");$q=$r->quote($pw);$r->exec(\"CREATE DATABASE IF NOT EXISTS `$d` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\");$r->exec(\"CREATE USER IF NOT EXISTS $qu@$qa IDENTIFIED BY $q\");$r->exec(\"ALTER USER $qu@$qa IDENTIFIED BY $q\");$r->exec(\"GRANT ALL PRIVILEGES ON `$d`.* TO $qu@$qa\");$r->exec(\"FLUSH PRIVILEGES\");' && php artisan migrate --force || echo \"[boot] DB not ready, skipping migrations\") && exec frankenphp run --config /etc/frankenphp/Caddyfile --adapter caddyfile",
-          "installCommand": "composer install --no-dev --optimize-autoloader --classmap-authoritative --prefer-dist --no-interaction && rm -rf /root/.composer/cache",
-          "buildCommand": "(npm ci --no-audit --no-fund || npm i --force --no-audit --no-fund) && npm run build && rm -rf node_modules /root/.npm",
-          "optimize": true,
-          "port": 80,
-          "domains": [domain],
-          "volumes": ["laravel_storage:/app/storage"],
-          "productionPaths": ["app", "bootstrap", "config", "database", "public", "resources", "routes", "storage", "vendor", "artisan", "composer.json", "composer.lock"],
-          "env": envObj
+          "runtimeVersion": "8.4"
         };
+        if (baseImage) {
+          laravelCfg.buildImage = baseImage;
+          laravelCfg.runtimeImage = baseImage;
+        }
+        laravelCfg.autoDeployPaths = {
+          "exclude": ["tests/**", "docs/**", "docker/**", ".github/**", "*.md", ".gitignore", "phpunit.xml"]
+        };
+        laravelCfg.startCommand = "mkdir -p storage/app/public storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache && (php -r '$h=getenv(\"DB_HOST\")?:\"mariadb\";$p=(int)(getenv(\"DB_PORT\")?:3306);$d=getenv(\"DB_DATABASE\")?:\"\";$u=getenv(\"DB_USERNAME\")?:\"\";$pw=getenv(\"DB_PASSWORD\")?:\"\";$rp=getenv(\"DB_ROOT_PASSWORD\")?:getenv(\"MARIADB_ROOT_PASSWORD\")?:getenv(\"MYSQL_ROOT_PASSWORD\")?:\"\";if(!$d||!$u||!($s=@fsockopen($h,$p,$e,$t,2)))exit(1);fclose($s);$o=[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_TIMEOUT=>5];try{new PDO(\"mysql:host=$h;port=$p;dbname=$d;charset=utf8mb4\",$u,$pw,$o);exit(0);}catch(Throwable){}if(!$rp||!$pw||!preg_match(\"/^\\w+$/\",$d)||!preg_match(\"/^\\w+$/\",$u))exit(1);$r=new PDO(\"mysql:host=$h;port=$p;charset=utf8mb4\",\"root\",$rp,$o);$qu=$r->quote($u);$qa=$r->quote(\"%\");$q=$r->quote($pw);$r->exec(\"CREATE DATABASE IF NOT EXISTS `$d` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\");$r->exec(\"CREATE USER IF NOT EXISTS $qu@$qa IDENTIFIED BY $q\");$r->exec(\"ALTER USER $qu@$qa IDENTIFIED BY $q\");$r->exec(\"GRANT ALL PRIVILEGES ON `$d`.* TO $qu@$qa\");$r->exec(\"FLUSH PRIVILEGES\");' && php artisan migrate --force || echo \"[boot] DB not ready, skipping migrations\") && (php artisan optimize || true) && exec frankenphp run --config /etc/frankenphp/Caddyfile --adapter caddyfile";
+        laravelCfg.installCommand = "composer install --no-dev --optimize-autoloader --classmap-authoritative --prefer-dist --no-interaction && rm -rf /root/.composer/cache";
+        laravelCfg.buildCommand = "[ -f package.json ] && (npm ci --no-audit --no-fund || npm i --force --no-audit --no-fund) && npm run build && rm -rf node_modules /root/.npm || true";
+        laravelCfg.port = 80;
+        laravelCfg.domains = [domain];
+        laravelCfg.volumes = ["laravel_storage:/app/storage"];
+        laravelCfg.productionPaths = ["app", "bootstrap", "config", "database", "public", "resources", "routes", "storage", "vendor", "artisan", "composer.json", "composer.lock"];
+        laravelCfg.env = envObj;
         out = JSON.stringify(laravelCfg, null, 2);
       } else {
         out = `# Backup all MariaDB databases + Redis RDB\nsudo ./services/mariadb-redis/backup.sh\n\n# Create a project DB & user\ndocker exec mariadb mariadb -u root -p"${document.getElementById('maria_pass').value.trim()}" -e "\nCREATE DATABASE IF NOT EXISTS app_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\nCREATE USER IF NOT EXISTS 'app_user'@'%' IDENTIFIED BY 'strong_pass';\nGRANT ALL PRIVILEGES ON app_db.* TO 'app_user'@'%';\nFLUSH PRIVILEGES;"`;
@@ -875,7 +886,7 @@
     const DB_CACHE_KEY = 'openship_db_stack_cache_v1';
     function saveCache() {
       try {
-        const ids = ['hw_ram','maria_ver','maria_pass','maria_pool','maria_conn','maria_mem','redis_ver','redis_pass','redis_maxmem','redis_policy','redis_mem','php_ver','pma_ver','pma_domain','pma_upload','pma_mem','laravel_app_name','laravel_domain','laravel_db_name','laravel_db_user'];
+        const ids = ['hw_ram','maria_ver','maria_pass','maria_pool','maria_conn','maria_mem','redis_ver','redis_pass','redis_maxmem','redis_policy','redis_mem','php_ver','pma_ver','pma_domain','pma_upload','pma_mem','laravel_app_name','laravel_domain','laravel_db_name','laravel_db_user','laravel_base_image'];
         const data = { activeTab, enable_pma: document.getElementById('enable_pma').checked, laravel_use_redis: document.getElementById('laravel_use_redis').checked };
         ids.forEach(id => { data[id] = document.getElementById(id).value; });
         localStorage.setItem(DB_CACHE_KEY, JSON.stringify(data));
