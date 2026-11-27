@@ -5,13 +5,13 @@ on:
     branches:
       - main
     paths:
-      - 'templates/laravel-frankenphp/deploy/Dockerfile.base'
+      - 'docker/frankenphp-base/**'
       - '.github/workflows/packages.yml'
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/openship-laravel-base
+  IMAGE_NAME: ${{ github.repository_owner }}/frankenphp-base
 
 jobs:
   build-and-push-base:
@@ -45,14 +45,15 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ steps.image_name.outputs.IMAGE }}
           tags: |
             type=raw,value=latest
+            type=raw,value=8.4
             type=raw,value=php8.4
             type=sha,format=short
 
       - name: Build and push base Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./templates/laravel-frankenphp/deploy/Dockerfile.base
+          context: ./docker/frankenphp-base
+          file: ./docker/frankenphp-base/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
